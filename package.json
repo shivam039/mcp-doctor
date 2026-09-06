@@ -20,7 +20,8 @@
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "release": "node scripts/auto-release.js"
   },
   "keywords": [
     "mcp",
