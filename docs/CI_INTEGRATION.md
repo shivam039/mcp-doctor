@@ -1,12 +1,12 @@
 # CI Integration Guide for MCP Server Authors
 
-Prevent publishing broken schemas and failing handshakes by integrating `mcp-doctor` directly into your server's CI pipeline.
+Prevent publishing broken schemas and failing handshakes by integrating `mcp-medic` directly into your server's CI pipeline.
 
 ---
 
 ## 1. GitHub Actions (Official Action)
 
-Add `.github/workflows/mcp-doctor.yml` to your repository:
+Add `.github/workflows/mcp-medic.yml` to your repository:
 
 ```yaml
 name: Validate MCP Server
@@ -25,7 +25,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Run MCP Doctor
+      - name: Run MCP Medic
         uses: shivam039/mcp-doctor@main
         with:
           config-path: './.mcp.json'
@@ -53,7 +53,7 @@ jobs:
         with:
           node-version: 20
       - name: Run Diagnostics & Export JUnit
-        run: npx --yes mcp-doctor check --export-junit junit-results.xml
+        run: npx --yes mcp-medic check --export-junit junit-results.xml
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()
@@ -65,15 +65,15 @@ jobs:
 
 ## 3. Pre-Publish NPM / PyPI Hook
 
-Add `mcp-doctor` to your `package.json` scripts:
+Add `mcp-medic` to your `package.json` scripts:
 
 ```json
 {
   "scripts": {
-    "prepublishOnly": "mcp-doctor check --fail-on error"
+    "prepublishOnly": "mcp-medic check --fail-on error"
   },
   "devDependencies": {
-    "mcp-doctor": "^1.0.0"
+    "mcp-medic": "^1.0.0"
   }
 }
 ```

@@ -18,11 +18,11 @@ When connecting to an MCP server via stdio, SSE, or HTTP, initialization fails w
 1. Ensure all diagnostic logging inside your server is directed strictly to `stderr` (`console.error` in Node.js, `sys.stderr.write` in Python).
 2. Increase handshake timeout using the CLI flag:
    ```bash
-   npx mcp-doctor check --timeout 15000 --verbose
+   npx mcp-medic check --timeout 15000 --verbose
    ```
 3. Run with `--verbose` to inspect raw JSON-RPC traffic and identify whether the process responded:
    ```bash
-   npx mcp-doctor check --verbose
+   npx mcp-medic check --verbose
    ```
 
 ---

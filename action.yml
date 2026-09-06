@@ -1,6 +1,6 @@
-name: 'mcp-doctor-action'
+name: 'mcp-medic-action'
 description: 'Diagnose broken MCP (Model Context Protocol) server configs in CI before they break your agent silently'
-author: 'mcp-doctor'
+author: 'Shivam Dixit'
 branding:
   icon: 'check-circle'
   color: 'green'
@@ -35,7 +35,7 @@ runs:
       with:
         node-version: '20'
 
-    - name: Run mcp-doctor
+    - name: Run mcp-medic
       shell: bash
       run: |
         ARGS="check"
@@ -54,4 +54,4 @@ runs:
         if [ "${{ inputs.verbose }}" = "true" ]; then
           ARGS="$ARGS --verbose"
         fi
-        npx --yes mcp-doctor $ARGS
+        npx --yes mcp-medic $ARGS

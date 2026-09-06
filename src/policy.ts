@@ -2,28 +2,37 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Check, MCPConnection, DiagnosticResult, TransportType } from './types.js';
 
-export interface MCPDoctorPolicy {
+export interface MCPMedicPolicy {
   bannedTransports?: TransportType[];
   allowedDomains?: string[];
   minDescriptionLength?: number;
   requireToolDescriptions?: boolean;
 }
 
+export type MCPDoctorPolicy = MCPMedicPolicy;
+
 /**
- * Loads a policy from a file path, or auto-discovers .mcp-doctor-policy.json in cwd.
+ * Loads a policy from a file path, or auto-discovers .mcp-medic-policy.json (or .mcp-doctor-policy.json) in cwd.
  */
 export function loadPolicy(
   policyPath?: string,
   cwd: string = process.cwd(),
-): MCPDoctorPolicy | undefined {
-  const targetPath = policyPath ? resolve(policyPath) : resolve(cwd, '.mcp-doctor-policy.json');
+): MCPMedicPolicy | undefined {
+  let targetPath = policyPath ? resolve(policyPath) : resolve(cwd, '.mcp-medic-policy.json');
+  if (!policyPath && !existsSync(targetPath)) {
+    const fallbackPath = resolve(cwd, '.mcp-doctor-policy.json');
+    if (existsSync(fallbackPath)) {
+      targetPath = fallbackPath;
+    }
+  }
+
   if (!existsSync(targetPath)) {
     return undefined;
   }
 
   try {
     const raw = readFileSync(targetPath, 'utf-8');
-    const parsed = JSON.parse(raw) as MCPDoctorPolicy;
+    const parsed = JSON.parse(raw) as MCPMedicPolicy;
     return parsed;
   } catch (err) {
     throw new Error(
@@ -100,7 +109,7 @@ export function createPolicyChecks(policy: MCPDoctorPolicy): Check[] {
                 serverName: connection.server.name,
                 details: { hostname, allowedDomains: allowed, url: connection.server.url },
                 suggestedFix: {
-                  description: `Configure server "${connection.server.name}" to use an approved domain or update .mcp-doctor-policy.json.`,
+                  description: `Configure server "${connection.server.name}" to use an approved domain or update policy configuration.`,
                 },
               });
             }

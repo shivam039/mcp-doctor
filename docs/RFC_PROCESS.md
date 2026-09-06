@@ -1,6 +1,6 @@
 # Request for Comments (RFC) Process
 
-The RFC process provides a consistent and open path for proposing major new features, breaking changes, or architectural shifts in `mcp-doctor`.
+The RFC process provides a consistent and open path for proposing major new features, breaking changes, or architectural shifts in `mcp-medic`.
 
 ## When is an RFC Required?
 

@@ -10,7 +10,7 @@ export function formatReportHuman(
   options: FormatReportOptions = {},
 ): string {
   const lines: string[] = [];
-  lines.push(`mcp-doctor report${report.configSource ? ` — ${report.configSource}` : ''}`);
+  lines.push(`mcp-medic report${report.configSource ? ` — ${report.configSource}` : ''}`);
   lines.push(
     `${report.summary.connected}/${report.summary.servers} servers connected, ` +
       `${report.summary.errors} error(s), ${report.summary.warnings} warning(s)`,

@@ -8,7 +8,7 @@ export interface ConformanceResult {
 const VALID_SEVERITIES = new Set(['error', 'warning', 'info']);
 
 /**
- * Conformance test helper for community check packages (mcp-doctor-check-*).
+ * Conformance test helper for community check packages (mcp-medic-check-*).
  * Validates that a Check implementation conforms strictly to CONTRACT.md.
  */
 export async function runCheckConformanceSuite(check: Check): Promise<ConformanceResult> {

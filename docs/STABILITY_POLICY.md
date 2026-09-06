@@ -1,6 +1,6 @@
 # 1.0 API Stability & Deprecation Policy
 
-`mcp-doctor` follows [Semantic Versioning 2.0.0](https://semver.org/).
+`mcp-medic` follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 ---
 

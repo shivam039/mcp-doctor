@@ -1,6 +1,6 @@
 # Security Policy & Threat Model
 
-`mcp-doctor` validates MCP server configurations by executing handshakes, parsing JSON-RPC responses, and inspecting JSON schemas. Because it spawns child processes and parses untrusted input, its internal attack surface is governed by strict defensive controls.
+`mcp-medic` validates MCP server configurations by executing handshakes, parsing JSON-RPC responses, and inspecting JSON schemas. Because it spawns child processes and parses untrusted input, its internal attack surface is governed by strict defensive controls.
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### 1. Process Spawning & Command Injection Safeguards
 - **No Shell Execution**: Processes are invoked with `child_process.spawn(command, args, { shell: false })`. Arguments are passed as discrete array elements rather than interpolated shell strings, eliminating shell command injection vulnerabilities.
-- **Immediate Process Cleanup**: `mcp-doctor` terminates child processes immediately after the initialize handshake and tool discovery phases complete, ensuring no orphan or dangling server processes remain.
+- **Immediate Process Cleanup**: `mcp-medic` terminates child processes immediately after the initialize handshake and tool discovery phases complete, ensuring no orphan or dangling server processes remain.
 
 ### 2. Untrusted JSON & Protocol Parsing
 - **JSON-RPC Framing Protection**: stdio and HTTP responses are parsed with bounded buffer constraints. Malformed messages or invalid JSON do not crash the runner or leak internal state.
@@ -26,4 +26,4 @@
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability within `mcp-doctor`, please report it privately via GitHub Security Advisories or by emailing security contact before public disclosure. We will respond within 48 hours.
+If you discover a security vulnerability within `mcp-medic`, please report it privately via GitHub Security Advisories or by emailing security contact before public disclosure. We will respond within 48 hours.
