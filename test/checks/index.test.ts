@@ -9,6 +9,7 @@ import {
   securityUntrustedRemoteCheck,
   securityOverbroadPermissionsCheck,
   securityPromptInjectionRiskCheck,
+  securityHiddenUnicodeTagsCheck,
   qualityToolNamesCheck,
   qualityToolDescriptionsCheck,
   qualityToolOutputSchemaCheck,
@@ -20,8 +21,8 @@ import {
 } from '../../src/checks/index.js';
 
 describe('checks index', () => {
-  it('exports all 16 checks in allChecks', () => {
-    expect(allChecks).toHaveLength(16);
+  it('exports all 17 checks in allChecks', () => {
+    expect(allChecks).toHaveLength(17);
     expect(allChecks).toContain(malformedSchemaCheck);
     expect(allChecks).toContain(missingRequiredFieldsCheck);
     expect(allChecks).toContain(typeMismatchCheck);
@@ -30,6 +31,7 @@ describe('checks index', () => {
     expect(allChecks).toContain(securityUntrustedRemoteCheck);
     expect(allChecks).toContain(securityOverbroadPermissionsCheck);
     expect(allChecks).toContain(securityPromptInjectionRiskCheck);
+    expect(allChecks).toContain(securityHiddenUnicodeTagsCheck);
     expect(allChecks).toContain(qualityToolNamesCheck);
     expect(allChecks).toContain(qualityToolDescriptionsCheck);
     expect(allChecks).toContain(qualityToolOutputSchemaCheck);
@@ -52,6 +54,7 @@ describe('checks index', () => {
       'security.untrusted-remote',
       'security.overbroad-permissions',
       'security.prompt-injection-risk',
+      'security.hidden-unicode-tags',
       'quality.tool-name',
       'quality.vague-description',
       'quality.output-schema',
@@ -62,9 +65,13 @@ describe('checks index', () => {
     ]);
   });
 
-  it('labels every security check as heuristic in its description', () => {
+  it('labels every heuristic (pattern-matching) security check as such in its description', () => {
     for (const check of [securityUntrustedRemoteCheck, securityOverbroadPermissionsCheck, securityPromptInjectionRiskCheck]) {
       expect(check.description.toLowerCase()).toContain('heuristic');
     }
+  });
+
+  it('does NOT label security.hidden-unicode-tags as heuristic — its detection is deterministic, not a pattern guess', () => {
+    expect(securityHiddenUnicodeTagsCheck.description.toLowerCase()).not.toContain('heuristic');
   });
 });

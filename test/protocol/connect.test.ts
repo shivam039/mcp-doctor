@@ -159,3 +159,67 @@ describe('resources/prompts capability inspection', () => {
     expect(result.resources?.[0]?.uri).toBe('file:///tmp/notes.txt');
   });
 });
+
+describe('tools/list pagination (real-world validation finding)', () => {
+  it('follows nextCursor and merges every page into one tools array', async () => {
+    const result = await connect(config('paginated-tools'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.tools?.map((t) => t.name)).toEqual(['echo', 'second-tool']);
+  });
+
+  it('fails the connection if a later page is malformed', async () => {
+    const result = await connect(config('paginated-tools-broken-page-2'), 1000);
+    expect(result.status).toBe('failed');
+    expect(result.error?.stage).toBe('list-tools');
+    expect(result.error?.message).toMatch(/tools array/);
+  });
+
+  it('stops following an unbounded nextCursor instead of hanging forever', async () => {
+    const result = await connect(config('paginated-tools-infinite'), 5000);
+    expect(result.status).toBe('failed');
+    expect(result.error?.message).toMatch(/did not terminate pagination/);
+  }, 10000);
+});
+
+describe('resources/templates/list (real-world validation finding)', () => {
+  it('does not treat "method not found" as a capability error — most servers never implement this optional RPC', async () => {
+    // 'with-resources-prompts' mode declares the resources capability but
+    // responds to resources/templates/list with a plain -32601, matching
+    // real-world servers that only expose concrete resources.
+    const result = await connect(config('with-resources-prompts'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.resourceTemplates).toBeUndefined();
+    expect(result.capabilityErrors?.resourceTemplates).toBeUndefined();
+    // The rest of the handshake must still complete correctly — this is
+    // also a regression test for the id-desync bug the templates addition
+    // exposed (a failed/skipped request must not throw off the expected
+    // JSON-RPC id of every subsequent request).
+    expect(result.prompts?.[0]?.name).toBe('summarize');
+    expect(result.resources?.[0]?.uri).toBe('file:///tmp/notes.txt');
+  });
+
+  it('lists resource templates when the server implements resources/templates/list', async () => {
+    const result = await connect(config('with-resource-templates'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.resourceTemplates).toEqual([
+      { uriTemplate: 'file:///tmp/{name}.txt', name: 'scratch-file', description: 'A scratch file by name.' },
+    ]);
+    expect(result.capabilityErrors?.resourceTemplates).toBeUndefined();
+  });
+
+  it('reports a genuine capability error (not method-not-found) without failing the connection', async () => {
+    const result = await connect(config('broken-resource-templates'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.resourceTemplates).toBeUndefined();
+    expect(result.capabilityErrors?.resourceTemplates).toMatch(/resourceTemplates array/);
+    // tools/list must still have succeeded independently.
+    expect(result.tools?.[0]?.name).toBe('echo');
+  });
+
+  it('never calls resources/templates/list when the resources capability was not declared', async () => {
+    const result = await connect(config('normal'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.resourceTemplates).toBeUndefined();
+    expect(result.capabilityErrors?.resourceTemplates).toBeUndefined();
+  });
+});

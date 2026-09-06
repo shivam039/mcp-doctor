@@ -102,6 +102,21 @@ export interface MCPResourceDefinition {
   size?: number;
 }
 
+// A URI template (RFC 6570), distinct from a concrete MCPResourceDefinition.
+// Governed by the SAME `capabilities.resources` flag — the spec has no
+// separate sub-capability for templates. `resources/templates/list` is
+// optional in practice: most servers only expose concrete resources, so a
+// server responding with JSON-RPC -32601 ("Method not found") to this RPC
+// is normal, not a capability error (see src/protocol/connect.ts's
+// isMethodNotFound()).
+export interface MCPResourceTemplate {
+  uriTemplate: string;
+  name?: string;   // required per spec's BaseMetadata; optional here for the same reason as MCPResourceDefinition.name
+  title?: string;
+  description?: string;
+  mimeType?: string;
+}
+
 export interface MCPPromptArgument {
   name?: string;   // required per spec's BaseMetadata; optional here for the same reason as above
   title?: string;
@@ -122,8 +137,9 @@ export interface MCPConnection {
   capabilities?: Record<string, unknown>; // raw capabilities from initialize response
   tools?: MCPToolDefinition[];
   resources?: MCPResourceDefinition[]; // only populated if capabilities.resources was declared
+  resourceTemplates?: MCPResourceTemplate[]; // only populated if capabilities.resources was declared AND the server returned any
   prompts?: MCPPromptDefinition[];     // only populated if capabilities.prompts was declared
-  capabilityErrors?: { resources?: string; prompts?: string }; // best-effort; never fails the connection
+  capabilityErrors?: { resources?: string; resourceTemplates?: string; prompts?: string }; // best-effort; never fails the connection
   protocolVersion?: ProtocolVersionInfo;
   serverInfo?: MCPServerInfo;
   error?: {
@@ -272,6 +288,7 @@ export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunR
 | Resources/prompts capability inspection (passive `resources/list`/`prompts/list`, only when declared in `initialize`) | **Codex** | `src/protocol/connect.ts` |
 | MCP Quality Engine: tool/resource/prompt quality checks (naming, descriptions, output schema, annotations, tool-surface bloat), diagnostic category inference, and the deterministic MCP Quality Score | **core** | `src/checks/quality-*.ts`, `src/diagnostics.ts`, `src/quality-score.ts` |
 | MCP Quality Engine v1.1 (trust hardening): protocol-version-aware quality rules, visible `protocol.*` connection-health diagnostics (replacing hidden score deductions), score coverage/disclaimer/unscored-servers, coverage-aware `quality.minimumScore` policy gate | **core** | `src/protocol/quality-rules.ts`, `src/checks/protocol-connection-health.ts`, `src/quality-score.ts` |
+| Real-world validation milestone: `resources/templates/list` support, cursor-based pagination for all four `list` RPCs (id-desync bugfix across all `connect()` requests), `security.hidden-unicode-tags` (deterministic Unicode Tags-block steganography detection), resource-template quality checks | **core** | `src/protocol/connect.ts`, `src/checks/security-hidden-unicode-tags.ts`, `src/checks/quality-resources.ts` |
 
 **Merge order:** core types → protocol layer → checks → CLI. Checks need a
 real or mocked `MCPConnection`; CLI needs checks; nobody should block on

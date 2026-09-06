@@ -472,3 +472,166 @@ stronger impact than stylistic recommendations" without changing constants).
 Test count: 239 → 283 (+44) in this pass. All pre-existing tests continue
 passing; typecheck/build/`npm pack --dry-run` clean.
 
+## 2026-09-06 — [core] Real-world validation milestone: protocol gaps, one deterministic security check, score/CLI review
+Decision (what changed): four scoped changes, each traced to a specific
+real-world gap, not speculative coverage-padding.
+
+**1. `resources/templates/list` support** (`MCPResourceTemplate` in
+`types.ts`, `MCPConnection.resourceTemplates`,
+`capabilityErrors.resourceTemplates`; `normalizeResourceTemplates()` +
+the request in `connect.ts`): verified against the MCP spec
+(`ResourceTemplate` extends `BaseMetadata`, governed by the same
+`capabilities.resources` flag — there is no separate templates
+sub-capability) that this RPC exists and is legitimately optional. Most
+real servers that expose only concrete resources never implement it; a
+JSON-RPC `-32601` ("Method not found") response to it is spec-compliant,
+not a defect, so `isMethodNotFound()` swallows it silently instead of
+setting `capabilityErrors.resourceTemplates`. A genuine failure (any other
+error) still surfaces as a capability error without failing the connection,
+same as `resources`/`prompts`.
+
+**2. Request-id desync bug, found by implementing (1), fixed everywhere**:
+`connect()`'s per-request expected-id tracking used
+`validateResponse(await withTimeout(...), nextExpectedId++)` — a trailing
+argument evaluated *after* an `await` that can throw. If a request timed
+out or failed (exactly what most servers' response to the new
+`resources/templates/list` call does), the `++` never ran, desyncing the
+local counter from the transport's real, unconditionally-incrementing id.
+Every subsequent request in the same connection would then fail response
+validation (`response.id !== expectedId`) even though the server answered
+correctly — in practice this meant adding *any* optional capability probe
+that commonly fails/times out (which is exactly what (1) is) would silently
+break `prompts/list` for every server that also declares `prompts`. Fixed
+at all four `list` call sites (now centralized in `requestAllPages()`, see
+(3)) and at `initialize` by capturing the expected id in a `const`
+*before* the `await`, never as a trailing call argument. Regression-tested
+in `test/protocol/connect.test.ts` (`with-resources-prompts` mode, which
+now returns `-32601` for `resources/templates/list` by default, exercising
+exactly the sequence that exposed the bug).
+
+**3. Cursor-based pagination for all four `list` RPCs** (`requestAllPages()`
+in `connect.ts`, used by `tools/list`, `resources/list`,
+`resources/templates/list`, `prompts/list`): verified against the spec
+schema that `ListToolsRequest`/`ListResourcesRequest`/`ListPromptsRequest`/
+`ListResourceTemplatesRequest` all extend `PaginatedRequest` (optional
+`cursor` param, optional `nextCursor` in the response) — present since the
+client's earliest supported protocol version, not new in any recent
+revision. mcp-medic previously sent every `list` request with no `cursor`
+and used only the first page's array, meaning a server with a large-enough
+catalog to paginate would have tools/resources/prompts past page 1 silently
+invisible to every check and to the quality score — a real false-negative
+class, not a hypothetical one, since pagination is spec-legal at any
+catalog size a server chooses. `requestAllPages()` follows `nextCursor`
+until absent, capped at `MAX_PAGINATION_PAGES = 1000` (a defensive guard
+against a misbehaving/malicious server that never stops paginating, which
+would otherwise hang a passive `check` indefinitely); exceeding the cap is
+reported as a connection failure, not a silent truncation. This is a
+non-cosmetic protocol-accuracy fix that happened to surface only while
+investigating (6) below, not something (6) itself required.
+
+**4. `security.hidden-unicode-tags`** (new check, `src/checks/`): the
+Unicode "Tags" block (U+E0000–U+E007F) is documented
+(arXiv:2607.05744) as a real MCP tool-metadata steganography technique —
+invisible in any UI, but present in the string many LLM tokenizers see.
+Deliberately given `severity: 'error'` and no "heuristic" language in its
+description, unlike the three existing `security.*` checks: detecting the
+presence of these codepoints is a deterministic fact, not a pattern-match
+guess, so it shouldn't be hedged the same way `untrusted-remote` or
+`prompt-injection-risk` are. The check reports which field was affected
+and a visible-text preview with tag characters stripped; it never echoes
+the raw hidden payload into a diagnostic message.
+
+**5. `quality.resource` extended to `resourceTemplates`**: same
+missing-name/missing-description/duplicate-URI/empty-URI checks now also
+run against `MCPResourceTemplate[]`, independently of whether `resources`
+was present (the two arrays are checked in independent branches, not
+gated on each other being populated).
+
+**6. `report.ts`'s "Capabilities:" line and `capabilityErrors` block**
+now surface resource-template counts/errors alongside tools/resources/
+prompts, so (1) isn't invisible in the human report.
+
+**Phase 2 (score calibration) — audited, changed nothing**: reviewed
+`SEVERITY_POINTS`/`SEVERITY_CAP_PER_CHECK`/dimension weights against the
+new real-world findings above; none of them motivate a weight or cap
+change (the new check and the templates/pagination fixes all plug into the
+existing dimension/severity model without needing new scoring rules).
+Order-independence and per-checkId capping (audited in the v1.1 pass) are
+unaffected — grouping in `deductionsFromDiagnostics()` is by
+`checkId|severity` via a `Map`, not by diagnostic order or insertion time.
+Deliberately did NOT add a "coverage" bump for the templates/pagination
+work — `computeQualityCoverage()` already derives coverage from
+`allChecks`/`checkId` prefixes, which pagination doesn't touch (it's a
+connection-layer fix, not a new check) and `security.hidden-unicode-tags`
+is automatically picked up since it's registered in `allChecks`.
+
+**Phase 3 (false-positive/false-negative review) — one FN fixed, one
+FN newly closed, no new FPs found**: the pagination gap (3) and the
+`resources/templates/list` gap (1) were both false negatives (real,
+spec-legal server behavior mcp-medic didn't inspect at all) rather than
+incorrect diagnostics on data it did see. No existing check was found to
+produce a false positive against the real tool/resource/prompt shapes
+checked against the public MCP spec examples and reference server source.
+Two patterns were noted from real servers but deliberately NOT turned into
+new checks, for lack of more than one observed instance: a
+"DEPRECATED: use X instead" description convention, and a same-server
+cluster of tools sharing a naming prefix — both are plausible future
+`quality.*` rules but would be speculative on this evidence alone.
+
+**Phase 4 (CLI/CI) — one real gap fixed**: the human report's
+"Capabilities:" line silently dropped resource-template counts even after
+(1) shipped, which would have made the new data invisible outside `--json`
+output; fixed in (6). No other CLI/CI friction was found to justify a
+change this pass — exit codes, `--json`/SARIF/JUnit shapes, and the
+`quality.minimumScore` policy gate's partial-coverage warning (from the
+v1.1 pass) were re-checked against the new `resourceTemplates` field and
+require no changes, since they're keyed off diagnostics/score, not raw
+connection fields.
+
+**Phase 5 (competitive gap check) — no action**: mcp-medic's
+differentiation (deterministic scoring + coverage + CI policy enforcement,
+vs. inspector-style manual exploration tools) is unaffected by anything
+found this pass; no competitor capability gap was judged large enough to
+justify implementation here.
+
+**Phase 6 (MCP 2026-07-28) — plan only, confirmed via the actual spec
+schema, no implementation this milestone**: fetched
+`schema/2026-07-28/schema.ts` directly (previously only reasoned about
+secondhand). Confirmed: `InitializeRequest`/`InitializeResult` and the
+`notifications/initialized` notification are removed entirely; every
+request instead carries required per-request `_meta` fields
+(`io.modelcontextprotocol/protocolVersion`,
+`io.modelcontextprotocol/clientCapabilities`), and version/capability
+negotiation moves to a new `server/discover` RPC. This is a different wire
+protocol, not an additive revision — `connect()`'s entire model (one
+handshake produces `capabilities`/`protocolVersion`, then plain
+`list`/pagination calls reuse them) does not apply. `KNOWN_UNSUPPORTED_
+PROTOCOL_VERSIONS['2026-07-28']` (already in `versions.ts` from an earlier
+session) correctly fails fast with this reason instead of attempting or
+faking a handshake — left unchanged, now confirmed accurate rather than
+assumed. Architectural implications for a real implementation (future
+milestone, not this one): (a) `Transport` would need a `server/discover`-
+based negotiation path entirely separate from `initialize`, selected by
+which protocol version is requested, since a single client may need to
+speak either wire shape; (b) every per-request call site would need to
+attach `_meta` fields once capabilities/version are known, which changes
+`Transport.request()`'s signature or adds a wrapping layer — not a small
+diff given `StdioTransport`/`HttpTransport`/`SseTransport` all implement
+`request()` today; (c) passive inspection is still possible in principle
+(the RPCs being inspected — `tools/list` etc. — still exist, just
+addressed differently), so this is a compatibility/adapter problem, not a
+reason to add active calls; (d) new fixtures would need a
+`2026-07-28`-shaped fake server (`server/discover` + `_meta`-per-request)
+entirely distinct from the existing `initialize`-based fixture. Not
+implemented this milestone: the change touches the `Transport` interface
+shared by all three transports, is not "small," and no server in active
+use today speaks only this wire shape (it postdates every version any
+real deployed server currently negotiates) — so there is no real-world
+validation evidence yet that justifies it, only the spec's existence.
+
+Test count for this milestone overall (`security.hidden-unicode-tags` +
+`resources/templates/list` + the id-desync fix + pagination + the
+`quality.resource`/`report.ts` template coverage): 283 → 306 (+23).
+All pre-existing tests continue passing; typecheck/build clean; see the
+PR description for the exact per-file breakdown.
+

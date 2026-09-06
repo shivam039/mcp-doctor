@@ -55,6 +55,61 @@ describe('qualityResourcesCheck (quality.resource)', () => {
     expect(results.find((r) => r.message.includes('invalid "size"'))).toMatchObject({ severity: 'warning' });
   });
 
+  it('returns no diagnostics for a well-formed resource template', () => {
+    const results = qualityResourcesCheck.run({
+      server: { name: 'srv', transport: 'stdio' },
+      status: 'connected',
+      resourceTemplates: [
+        { uriTemplate: 'file:///{name}.txt', name: 'scratch-file', description: 'A scratch file by name.' },
+      ],
+    });
+    expect(results).toEqual([]);
+  });
+
+  it('flags an empty/invalid uriTemplate as an error', () => {
+    const results = qualityResourcesCheck.run({
+      server: { name: 'srv', transport: 'stdio' },
+      status: 'connected',
+      resourceTemplates: [{ uriTemplate: '', name: 'x' }],
+    });
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ checkId: 'quality.resource', severity: 'error', category: 'schema' });
+  });
+
+  it('flags a resource template missing a name as an error (required by spec)', () => {
+    const results = qualityResourcesCheck.run({
+      server: { name: 'srv', transport: 'stdio' },
+      status: 'connected',
+      resourceTemplates: [{ uriTemplate: 'file:///{name}.txt' }],
+    });
+    expect(results.find((r) => r.message.includes('missing a "name"'))).toMatchObject({ severity: 'error' });
+  });
+
+  it('flags a resource template missing a description as an info note (optional per spec)', () => {
+    const results = qualityResourcesCheck.run({
+      server: { name: 'srv', transport: 'stdio' },
+      status: 'connected',
+      resourceTemplates: [{ uriTemplate: 'file:///{name}.txt', name: 'x' }],
+    });
+    expect(results.find((r) => r.message.includes('no description'))).toMatchObject({
+      severity: 'info',
+      category: 'quality',
+    });
+  });
+
+  it('flags duplicate resource template URIs as an error', () => {
+    const results = qualityResourcesCheck.run({
+      server: { name: 'srv', transport: 'stdio' },
+      status: 'connected',
+      resourceTemplates: [
+        { uriTemplate: 'file:///{name}.txt', name: 'a', description: 'd' },
+        { uriTemplate: 'file:///{name}.txt', name: 'b', description: 'd' },
+      ],
+    });
+    const dup = results.find((r) => r.message.includes('declared 2 times'));
+    expect(dup).toMatchObject({ checkId: 'quality.resource', severity: 'error' });
+  });
+
   it('catches unexpected internal errors without throwing', () => {
     const brokenConnection = {
       server: { name: 'exploding-server', transport: 'stdio' },

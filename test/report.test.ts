@@ -42,6 +42,43 @@ describe('formatReportHuman', () => {
     expect(output).not.toContain('prompt(s)');
   });
 
+  it('shows the resource template count when the server implements resources/templates/list', () => {
+    const report: RunReport = {
+      connections: [
+        {
+          server: { name: 'srv', transport: 'stdio' },
+          status: 'connected',
+          tools: [{ name: 'echo', inputSchema: {} }],
+          resourceTemplates: [{ uriTemplate: 'file:///{name}.txt', name: 'scratch-file' }],
+        },
+      ],
+      diagnostics: [],
+      summary: { servers: 1, connected: 1, failed: 0, errors: 0, warnings: 0 },
+    };
+
+    const output = formatReportHuman(report);
+    expect(output).toContain('Capabilities: 1 tool(s), 1 resource template(s)');
+  });
+
+  it('surfaces a resource-template capability inspection error without treating the connection as failed', () => {
+    const report: RunReport = {
+      connections: [
+        {
+          server: { name: 'srv', transport: 'stdio' },
+          status: 'connected',
+          tools: [{ name: 'echo', inputSchema: {} }],
+          capabilityErrors: { resourceTemplates: 'resources/templates/list response has no resourceTemplates array' },
+        },
+      ],
+      diagnostics: [],
+      summary: { servers: 1, connected: 1, failed: 0, errors: 0, warnings: 0 },
+    };
+
+    const output = formatReportHuman(report);
+    expect(output).toContain('[OK] srv');
+    expect(output).toContain('resources/templates/list: resources/templates/list response has no resourceTemplates array');
+  });
+
   it('surfaces a capability inspection error without treating the connection as failed', () => {
     const report: RunReport = {
       connections: [

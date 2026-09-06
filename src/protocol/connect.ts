@@ -8,6 +8,7 @@ import type {
   MCPToolDefinition,
   MCPToolAnnotations,
   MCPResourceDefinition,
+  MCPResourceTemplate,
   MCPPromptDefinition,
   MCPPromptArgument,
   RunOptions,
@@ -46,6 +47,14 @@ interface Transport {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** JSON-RPC -32601 ("Method not found"): many servers that declare the
+ * `resources` capability (for concrete resources/list) simply don't
+ * implement the optional `resources/templates/list` RPC — that's spec-
+ * compliant, not a capability error, so it must never be reported as one. */
+function isMethodNotFound(error: unknown): boolean {
+  return messageOf(error).includes('(-32601)');
 }
 
 function logVerbose(options: RunOptions | undefined, message: string): void {
@@ -95,6 +104,49 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
       },
     );
   });
+}
+
+/** Defends against a misbehaving/malicious server that never stops returning
+ * a `nextCursor`, which would otherwise hang a passive `check` forever. No
+ * real MCP server should need anywhere near this many pages for a single
+ * `list` call. */
+const MAX_PAGINATION_PAGES = 1000;
+
+/**
+ * MCP's `tools/list`/`resources/list`/`resources/templates/list`/`prompts/list`
+ * all extend `PaginatedRequest`/`PaginatedResult` (optional `cursor` param,
+ * optional `nextCursor` in the response) — present since the client's
+ * earliest supported protocol version, not something new in 2026-07-28.
+ * A server with a large catalog can legitimately split it across pages;
+ * without this, mcp-medic would silently see only page 1 and under-report
+ * (or mis-score) everything after it. Fetches every page with the same
+ * request/response validation as a single call, then hands the merged
+ * `{ [arrayKey]: allItems }` to the existing per-item `normalize*` function
+ * unchanged.
+ */
+async function requestAllPages(
+  transport: Transport,
+  method: string,
+  arrayKey: string,
+  timeoutMs: number,
+  nextId: () => number,
+): Promise<Record<string, unknown>> {
+  const merged: unknown[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGINATION_PAGES; page++) {
+    const id = nextId();
+    const params = cursor !== undefined ? { cursor } : undefined;
+    const result = validateResponse(await withTimeout(transport.request(method, params), timeoutMs, method), id);
+    if (!Array.isArray(result[arrayKey])) {
+      throw new Error(`${method} response has no ${arrayKey} array`);
+    }
+    merged.push(...result[arrayKey]);
+    cursor = typeof result.nextCursor === 'string' ? result.nextCursor : undefined;
+    if (cursor === undefined) {
+      return { [arrayKey]: merged };
+    }
+  }
+  throw new Error(`${method} did not terminate pagination after ${MAX_PAGINATION_PAGES} pages`);
 }
 
 function validateResponse(response: JsonRpcResponse, expectedId: number): Record<string, unknown> {
@@ -168,6 +220,35 @@ function normalizeResources(result: Record<string, unknown>): MCPResourceDefinit
       ...(typeof value.description === 'string' ? { description: value.description } : {}),
       ...(typeof value.mimeType === 'string' ? { mimeType: value.mimeType } : {}),
       ...(typeof value.size === 'number' ? { size: value.size } : {}),
+    };
+  });
+}
+
+function normalizeResourceTemplates(result: Record<string, unknown>): MCPResourceTemplate[] {
+  if (!Array.isArray(result.resourceTemplates)) {
+    throw new Error('resources/templates/list response has no resourceTemplates array');
+  }
+  return result.resourceTemplates.map((template, index) => {
+    if (
+      !template ||
+      typeof template !== 'object' ||
+      typeof (template as { uriTemplate?: unknown }).uriTemplate !== 'string'
+    ) {
+      throw new Error(`resources/templates/list returned an invalid template at index ${index}`);
+    }
+    const value = template as {
+      uriTemplate: string;
+      name?: unknown;
+      title?: unknown;
+      description?: unknown;
+      mimeType?: unknown;
+    };
+    return {
+      uriTemplate: value.uriTemplate,
+      ...(typeof value.name === 'string' ? { name: value.name } : {}),
+      ...(typeof value.title === 'string' ? { title: value.title } : {}),
+      ...(typeof value.description === 'string' ? { description: value.description } : {}),
+      ...(typeof value.mimeType === 'string' ? { mimeType: value.mimeType } : {}),
     };
   });
 }
@@ -590,6 +671,14 @@ export async function connect(
 
     let initialize: Record<string, unknown>;
     try {
+      // The id must be captured *before* the request settles, not as a
+      // trailing call argument evaluated after an `await` — if the awaited
+      // call throws (timeout, transport error), a trailing `nextExpectedId++`
+      // never runs at all, desyncing this counter from the ids the
+      // transport actually assigned to later requests. See the
+      // resources/templates/list addition in DECISIONS.md for how this
+      // surfaced.
+      const initializeId = nextExpectedId++;
       const response = await withTimeout(
         transport.request('initialize', {
           protocolVersion: requestedVersion,
@@ -599,7 +688,7 @@ export async function connect(
         timeoutMs,
         'initialize handshake',
       );
-      initialize = validateResponse(response, nextExpectedId++);
+      initialize = validateResponse(response, initializeId);
       if (!initialize.capabilities || typeof initialize.capabilities !== 'object') {
         throw new Error('initialize response has no capabilities object');
       }
@@ -664,10 +753,7 @@ export async function connect(
     let tools: MCPToolDefinition[];
     try {
       tools = normalizeTools(
-        validateResponse(
-          await withTimeout(transport.request('tools/list'), timeoutMs, 'tools/list'),
-          nextExpectedId++,
-        ),
+        await requestAllPages(transport, 'tools/list', 'tools', timeoutMs, () => nextExpectedId++),
       );
     } catch (error) {
       return failed(
@@ -688,29 +774,44 @@ export async function connect(
     // capability mcp-medic requires, so a broken resources/prompts listing
     // is reported alongside a still-successful connection.
     let resources: MCPResourceDefinition[] | undefined;
+    let resourceTemplates: MCPResourceTemplate[] | undefined;
     let prompts: MCPPromptDefinition[] | undefined;
     const capabilityErrors: NonNullable<MCPConnection['capabilityErrors']> = {};
 
     if (capabilities.resources && typeof capabilities.resources === 'object') {
       try {
         resources = normalizeResources(
-          validateResponse(
-            await withTimeout(transport.request('resources/list'), timeoutMs, 'resources/list'),
-            nextExpectedId++,
-          ),
+          await requestAllPages(transport, 'resources/list', 'resources', timeoutMs, () => nextExpectedId++),
         );
       } catch (error) {
         capabilityErrors.resources = messageOf(error);
+      }
+
+      // resources/templates/list is a distinct RPC governed by the same
+      // capability flag, but genuinely optional in practice — most servers
+      // that only expose concrete resources never implement it, and a
+      // "method not found" response for it is spec-compliant, not a defect.
+      try {
+        resourceTemplates = normalizeResourceTemplates(
+          await requestAllPages(
+            transport,
+            'resources/templates/list',
+            'resourceTemplates',
+            timeoutMs,
+            () => nextExpectedId++,
+          ),
+        );
+      } catch (error) {
+        if (!isMethodNotFound(error)) {
+          capabilityErrors.resourceTemplates = messageOf(error);
+        }
       }
     }
 
     if (capabilities.prompts && typeof capabilities.prompts === 'object') {
       try {
         prompts = normalizePrompts(
-          validateResponse(
-            await withTimeout(transport.request('prompts/list'), timeoutMs, 'prompts/list'),
-            nextExpectedId++,
-          ),
+          await requestAllPages(transport, 'prompts/list', 'prompts', timeoutMs, () => nextExpectedId++),
         );
       } catch (error) {
         capabilityErrors.prompts = messageOf(error);
@@ -723,6 +824,7 @@ export async function connect(
       capabilities,
       tools,
       ...(resources !== undefined ? { resources } : {}),
+      ...(resourceTemplates !== undefined ? { resourceTemplates } : {}),
       ...(prompts !== undefined ? { prompts } : {}),
       ...(Object.keys(capabilityErrors).length > 0 ? { capabilityErrors } : {}),
       protocolVersion,
