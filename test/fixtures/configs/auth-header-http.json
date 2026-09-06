@@ -1,0 +1,12 @@
+{
+  "servers": [
+    {
+      "name": "secure-api",
+      "transport": "http",
+      "url": "https://api.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer fake-token-do-not-use-1234567890"
+      }
+    }
+  ]
+}

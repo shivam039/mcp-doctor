@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "name": "broken-stdio",
+      "transport": "stdio",
+      "args": ["--verbose"]
+    }
+  ]
+}
