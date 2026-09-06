@@ -8,5 +8,8 @@ export { watchFileDebounced } from './watch.js';
 export type { WatchOptions, WatcherHandle } from './watch.js';
 export { runCheckConformanceSuite } from './conformance.js';
 export type { ConformanceResult } from './conformance.js';
+export { resolveRegistryServer } from './registry.js';
+export type { RegistryResolveOptions } from './registry.js';
+export { isMCPConfigFile, validateMCPDocument, activateExtension } from './extension/index.js';
 export { allChecks } from './checks/index.js';
 export * from './types.js';
