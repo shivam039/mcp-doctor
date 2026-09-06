@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "name": "insecure-remote",
+      "transport": "http",
+      "url": "http://api.example.com/mcp"
+    }
+  ]
+}

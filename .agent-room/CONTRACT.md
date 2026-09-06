@@ -20,6 +20,36 @@ memory of each other.
 
 Not in v1: auto-fix, GUI, multi-server orchestration, VS Code extension.
 
+## Scope of Phase 3
+
+Phase 3 adds, on top of v1 (see DECISIONS.md for the full rationale):
+1. `mcp-doctor fix <path>` — interactive, per-diagnostic auto-apply of
+   `suggestedFix.patch`es to the local config file (diff + y/n confirm,
+   `.bak` backup, `--dry-run`, `--check <id>` filter). Only diagnostics
+   that carry a `patch` are fixable; most diagnostics remain description-only.
+2. Three new heuristic `security.*` checks: `security.overbroad-permissions`,
+   `security.prompt-injection-risk`, `security.untrusted-remote`. All are
+   explicitly documented (in their `description` and every diagnostic
+   `message`) as heuristics, not guarantees — never a substitute for
+   reviewing a third-party MCP server's source.
+
+### `SuggestedFix.patch` shape (as produced/consumed by mcp-doctor's own code)
+
+`SuggestedFix.patch` stays typed `unknown` in `DiagnosticResult` (any check
+or community package may put anything there, or nothing). The `fix` command
+and `security.untrusted-remote` agree on one concrete shape for it, defined
+and validated in `src/fix.ts`:
+
+```ts
+interface ConfigPatch {
+  serverName: string;        // matches MCPConfig.servers[i].name
+  set: Record<string, unknown>; // shallow fields to merge into that server's raw JSON
+}
+```
+
+`fix` only offers diagnostics whose `patch` matches this shape (via
+`isConfigPatch`); anything else is left as a description-only suggestion.
+
 ---
 
 ## Core Types (TypeScript)
@@ -137,6 +167,8 @@ export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunR
 | Protocol/handshake layer (spawn process, `initialize`, capability negotiation, `list-tools`) | **Codex** | `src/protocol/*.ts` |
 | Schema validation checks (malformed schema, missing required fields, type mismatch, sample-call simulation) | **Jules** | `src/checks/*.ts` |
 | CLI entry point + fixtures (broken sample configs) + colored output | **Antigravity** | `src/cli.ts`, `test/fixtures/*.json` |
+| Interactive auto-fix command + config-patch logic (Phase 3) | **Antigravity** | `src/fix.ts`, `fix` command in `src/cli.ts` |
+| Security heuristic checks (Phase 3 — normally Jules' `src/checks/*` area; implemented by Antigravity this session per direct human request, since `fix` and the checks that produce fixable patches are tightly coupled) | **Antigravity** | `src/checks/security-*.ts` |
 
 **Merge order:** core types → protocol layer → checks → CLI. Checks need a
 real or mocked `MCPConnection`; CLI needs checks; nobody should block on

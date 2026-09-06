@@ -1,78 +1,99 @@
 # Handoff — antigravity
 
-## Done this session
+(Earlier sessions' notes on the original CLI/fixtures/config-loader work
+are superseded by this file and by git history — see the "Add CLI,
+config-loader, fixtures, and library entrypoint" commit. This entry covers
+the Phase 3 session: `mcp-doctor fix` + security checks.)
 
-- **`test/fixtures/configs/`** — 6 fixture configs + one `.expect.md` each,
-  per CONTRACT.md's `MCPConfig` shape:
-  - `valid-stdio.json` — single valid stdio server.
-  - `missing-command.json` — stdio with no `command` (structurally invalid).
-  - `wrong-transport-value.json` — `"transport": "websocket"` (invalid enum
-    value).
-  - `multi-server.json` — 3 servers, stdio + sse + http.
-  - `auth-header-http.json` — http transport with a fake bearer token in
-    `headers`. **Unverified beyond parsing**: Codex's `src/protocol/` is
-    still empty (`.gitkeep` only), so header passthrough on the actual HTTP
-    request has not been exercised. Re-check once the http transport lands.
-  - `empty-servers.json` — `{ "servers": [] }` edge case.
-- **`src/config-loader.ts`** — `loadConfig(rawJson, sourcePath)` per the
-  spec: validates `name`, `transport` (enum), `command` (stdio) /
-  `url` (sse/http); returns `{ config?, errors: string[] }`, never throws.
-  8 unit tests in `test/config-loader.test.ts`, all passing, run against
-  the actual fixture files above.
-- **`src/cli.ts`** — `mcp-doctor check <path> [--json] [--timeout <ms>]`.
-  Reads the file, JSON.parses it (clear error + exit 1 on parse failure),
-  runs it through `loadConfig` (clear errors + exit 1 before any connection
-  attempt on config-level errors), then calls `runChecks` from
-  `orchestrator.ts` and formats with `formatReportHuman`/`formatReportJSON`
-  from `report.ts`. Colored human output (green `[OK]`, red `[FAILED]`/
-  `[TIMEOUT]`/`[error]`, yellow `[warning]`) via `picocolors` — see
-  DECISIONS.md for why. Exit code: `0` if `summary.errors === 0`, else `1`
-  (this only reflects diagnostic errors, not connection failures, per the
-  `RunReport` shape — that's `orchestrator.ts`'s contract, not something I
-  changed).
-- **`src/index.ts`** — library entrypoint: re-exports `runChecks`,
-  `formatReportHuman`/`formatReportJSON`, `loadConfig`, and `* from
-  './types.js'`. The `allChecks` re-export from the task spec is left as a
-  comment since `src/checks/index.ts` doesn't exist yet (see below).
-- **`package.json`** — added `picocolors` to `dependencies` (needed at
-  runtime, not just dev). `bin.mcp-doctor` (`dist/cli.js`) already matched
-  `rootDir: src` / `outDir: dist` in `tsconfig.json` — no changes needed
-  there.
-- Verified end-to-end: `npm run build && npm run typecheck && npx vitest
-  run`, plus manually ran the CLI against all 6 fixtures (human + `--json`
-  output), a malformed-JSON file, and a missing file — all behave as
-  expected (see DECISIONS.md decision log for the exact reasoning on the
-  import strategy below).
+## Done this session (Phase 3: FR3-1 auto-apply, FR3-2 security checks)
 
-## What's stubbed vs. real
+- **`src/fix.ts`** (new) — pure logic, no I/O: `ConfigPatch` type
+  (`{ serverName, set }`), `isConfigPatch`, `diffConfigPatch` (what a patch
+  would change, `[]` if already applied or server not found),
+  `applyConfigPatch` (returns a new raw config, never mutates), and
+  `formatFieldDiff`. 14 unit tests in `test/fix.test.ts`.
+- **`mcp-doctor fix <path> [--check <id>] [--dry-run]`** in `src/cli.ts`:
+  runs the same checks as `check`, filters diagnostics down to ones whose
+  `suggestedFix.patch` matches `ConfigPatch`, de-dupes identical patches,
+  then per fix: prints the diagnostic + a field-level diff, and (unless
+  `--dry-run`) prompts `y/N` via `node:readline/promises` before applying
+  — never bulk-applies. On the first actual write, copies the original
+  file to `<path>.bak` (non-negotiable, no flag disables it — FR3-1.2).
+  `--dry-run` shows every diff (plain text or `--json`) and prompts/writes
+  nothing (FR3-1.3). `main()` now takes an optional second `deps: { confirm }`
+  parameter so tests can inject a fake confirm function instead of dealing
+  with real stdin — see `test/fix-cli.test.ts`.
+- **Three new checks** in `src/checks/security-*.ts`, registered in
+  `src/checks/index.ts` (now 8 checks total):
+  - `security.untrusted-remote` — for sse/http servers, flags `http://`
+    URLs (warning, **with** a fixable patch upgrading to `https://`) and
+    raw IP-address hosts instead of domain names (warning, **no** patch —
+    there's no way to safely guess the intended domain). Loopback
+    (`127.0.0.1`/`::1`) is excluded from the IP-literal check specifically,
+    since flagging local dev as "untrusted remote" is misleading — the
+    non-https warning still applies to loopback over plain http.
+  - `security.overbroad-permissions` — flags inputSchema string properties
+    named like `command`/`path`/`url` etc. with no `enum`/`pattern`
+    constraining them, and tool descriptions claiming unrestricted
+    shell/filesystem/network access. No patch (server-owned schema).
+  - `security.prompt-injection-risk` — flags tool/parameter descriptions
+    containing instruction-like language aimed at the model rather than a
+    human (e.g. "always call this first", "ignore previous instructions").
+    No patch.
+  - All three: every diagnostic message and each check's `description`
+    field explicitly says "heuristic flag, not a guarantee — review this
+    server's source before trusting it" (FR3-2.4) — enforced by a test in
+    `test/checks/index.test.ts`.
+- **Fixtures**: `test/fixtures/configs/insecure-remote.json` (single
+  fixable http server, for demoing `fix`) and
+  `untrusted-remote-mixed.json` (5 servers covering every
+  `security.untrusted-remote` branch), each with a `.expect.md`. Plus new
+  mock `MCPConnection` fixtures in `test/fixtures/mock-connections.ts` for
+  all three new checks' unit tests.
+- **Idempotency (FR3-1.4)**, verified two ways:
+  1. `test/checks/security-untrusted-remote.test.ts` has a dedicated
+     `describe('idempotency', ...)` block: applies the suggested patch,
+     confirms the check reports nothing against the fixed connection, and
+     confirms re-applying the same patch is a no-op (`diffConfigPatch`
+     returns `[]`).
+  2. `test/fix-cli.test.ts` has a dedicated `describe('idempotency
+     (FR3-1.4)', ...)` block: runs `mcp-doctor fix` twice end-to-end
+     against a real local MCP-over-HTTP server (`node:http`, no network) —
+     the second run neither prompts nor writes anything.
+- **`test/fix-cli.test.ts`** also exercises the full real pipeline (real
+  `src/protocol/` HTTP transport + real `security.untrusted-remote` +
+  real diff/confirm/write) end-to-end: confirm → applies + writes `.bak`;
+  decline → writes nothing; `--dry-run` → never prompts, never writes;
+  `--check <id>` → filters correctly.
+- Manually smoke-tested the built `dist/cli.js` as a real subprocess with
+  piped stdin (`y\n`) against a real local HTTP server, confirming the
+  interactive `readline`-based prompt (not just the test's injected
+  `confirm`) actually works.
 
-- `src/checks/` and `src/protocol/` are both still empty (`.gitkeep`
-  only) — Jules and Codex haven't started. **`cli.ts` and `index.ts` do
-  not statically import from either** (a literal `import('./checks/index.js')`
-  would fail `tsc` for everyone until those land). Instead `cli.ts` uses a
-  small `importOptional(specifier)` helper that dynamically imports
-  `./checks/index.js` and `./protocol/index.js` at runtime and swallows
-  "module not found," falling back to an empty check list and the
-  orchestrator's built-in `connectStub`. Running the CLI today against any
-  fixture reports `[FAILED] ... spawn: protocol layer not yet implemented`
-  — that's expected, not a bug.
-- Once Codex lands `src/protocol/index.ts` exporting either a
-  `registerProtocol()` function or a `connect(...)` function matching
-  `registerConnectImpl`'s signature, and Jules lands `src/checks/index.ts`
-  exporting `allChecks: Check[]`, **no CLI changes are required** — the
-  dynamic imports pick them up automatically on next run.
-- Once `src/checks/index.ts` exists, uncomment the static
-  `export { allChecks } from './checks/index.js';` line in `src/index.ts`
-  (currently left as a comment for the same tsc-resolution reason above).
-- `auth-header-http.json` fixture: config-level parsing accepts `headers`
-  fine (it's already an optional field on `MCPServerConfig` for sse/http
-  per CONTRACT.md), but there is no real HTTP request yet to confirm the
-  header is actually forwarded — that's Codex's `src/protocol/` to verify
-  against once it exists.
+## What's NOT auto-fixable, on purpose
+
+Of the 8 built-in checks, only `security.untrusted-remote`'s non-https
+diagnostic produces a `patch` today. Everything else (`schema.*`, the
+IP-literal-host and overbroad-permissions/prompt-injection diagnostics) is
+about data a third-party MCP server declares, not the local config file —
+mcp-doctor has no safe mechanical fix for "this server's tool description
+looks suspicious." Those stay description-only by design; `fix` correctly
+reports "No auto-fixable diagnostics found" for a config with only those.
+
+## CONTRACT.md / DECISIONS.md changes
+
+- Added a "Scope of Phase 3" section to CONTRACT.md (auto-fix was
+  explicitly out of v1 scope) and documented the `ConfigPatch` shape there.
+- Added a row to the module-boundaries table: I implemented the
+  `security.*` checks this session (normally Jules' `src/checks/*` area)
+  because the human asked for `fix` and the checks that produce fixable
+  patches together, and no other session was concurrently touching
+  `src/checks/*`. Full reasoning logged in DECISIONS.md.
 
 ## Notes for whoever picks this up
 
-- `npm run build`, `npm run typecheck`, and `npx vitest run` all pass as
-  of this commit.
-- I did not touch `src/types.ts`, `src/orchestrator.ts`, `src/report.ts`,
-  `src/checks/*`, or `src/protocol/*`, per my ownership boundaries.
+- `npm run build`, `npm run typecheck`, and `npx vitest run` all pass
+  (107 tests across 20 files) as of this commit.
+- Did not touch `src/types.ts`, `src/orchestrator.ts`, `src/report.ts`, or
+  `src/protocol/*`. Did touch `src/checks/*` this session only — see
+  DECISIONS.md for why that's a deliberate, logged exception.

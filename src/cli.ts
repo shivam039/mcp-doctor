@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import * as readline from 'node:readline/promises';
 import { resolve } from 'node:path';
 import { runChecks, registerConnectImpl } from './orchestrator.js';
 import { formatReportHuman, formatReportJSON } from './report.js';
@@ -7,14 +8,15 @@ import { loadConfig } from './config-loader.js';
 import { discoverConfigFiles } from './discovery.js';
 import { watchFileDebounced } from './watch.js';
 import { resolveRegistryServer } from './registry.js';
+import { isConfigPatch, diffConfigPatch, applyConfigPatch, type ConfigPatch } from './fix.js';
 import { loadPolicy, createPolicyChecks } from './policy.js';
 import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline } from './fleet.js';
 import { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
-import type { Check, MCPConfig, RunReport } from './types.js';
+import type { Check, MCPConfig, RunReport, DiagnosticResult } from './types.js';
 import pc from 'picocolors';
 
 export interface ParsedArgs {
-  command: 'check' | 'watch' | 'check-all' | 'diff' | 'help';
+  command: 'check' | 'watch' | 'check-all' | 'diff' | 'fix' | 'help';
   configPath?: string;
   configPathB?: string;
   globPattern?: string;
@@ -29,7 +31,12 @@ export interface ParsedArgs {
   showFixes: boolean;
   verbose: boolean;
   failOn: 'error' | 'warning';
+  checkFilter?: string;
+  dryRun: boolean;
 }
+
+/** Prompts the user with `question` and resolves true for an explicit "y"/"yes" answer. */
+export type ConfirmFn = (question: string) => Promise<boolean>;
 
 export function parseArgs(argv: string[]): ParsedArgs {
   const args: ParsedArgs = {
@@ -38,6 +45,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     showFixes: false,
     verbose: false,
     failOn: 'error',
+    dryRun: false,
   };
   const positional: string[] = [];
 
@@ -49,6 +57,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       args.showFixes = true;
     } else if (arg === '--verbose' || arg === '-v') {
       args.verbose = true;
+    } else if (arg === '--dry-run') {
+      args.dryRun = true;
     } else if (arg === '--help' || arg === '-h') {
       args.command = 'help';
     } else if (arg === '--fail-on') {
@@ -57,6 +67,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
         throw new Error(`--fail-on requires "error" or "warning", got: ${val ?? '(none)'}`);
       }
       args.failOn = val;
+    } else if (arg === '--check') {
+      const val = argv[++i];
+      if (!val) {
+        throw new Error('--check requires a check id, e.g. --check security.untrusted-remote');
+      }
+      args.checkFilter = val;
     } else if (arg === '--policy') {
       args.policyPath = argv[++i];
     } else if (arg === '--export-junit' || arg === '--junit') {
@@ -93,7 +109,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   if (args.command !== 'help') {
     const first = positional[0];
-    if (first === 'check' || first === 'watch' || first === 'check-all' || first === 'diff') {
+    if (first === 'check' || first === 'watch' || first === 'check-all' || first === 'diff' || first === 'fix') {
       args.command = first;
       if (first === 'diff') {
         args.configPath = positional[1];
@@ -153,6 +169,7 @@ ${pc.bold('USAGE')}
   $ mcp-doctor check-all "<glob-pattern>" [options]
   $ mcp-doctor diff <configA.json> <configB.json>
   $ mcp-doctor watch <path/to/config.json> [options]
+  $ mcp-doctor fix <path/to/config.json> [--check <id>] [--dry-run]
 
 ${pc.bold('OPTIONS')}
   --config <path>       Specify path to MCP configuration file
@@ -169,8 +186,19 @@ ${pc.bold('OPTIONS')}
   --timeout <ms>        Per-server handshake timeout in milliseconds (default: 5000)
   --help, -h            Show help
 
+${pc.bold('FIX OPTIONS')} (mcp-doctor fix)
+  --check <id>          Only offer fixes from this check id (e.g. security.untrusted-remote)
+  --dry-run             Show every available fix as a diff; apply nothing, prompt for nothing
+
+${pc.bold('FIX BEHAVIOR')}
+  Only diagnostics that carry a mechanical suggestedFix.patch can be
+  auto-applied (most diagnostics are description-only and must be fixed by
+  hand). Each one is shown as a diff and requires an explicit y/n
+  confirmation — fixes are never bulk-applied silently. Before writing
+  anything, the original file is copied to <path>.bak.
+
 ${pc.bold('EXIT CODES')}
-  0  All checks passed cleanly
+  0  All checks passed cleanly / fix completed (including "nothing to fix")
   1  Diagnostics failed (errors found, or warnings when --fail-on warning)
   2  Usage or configuration error (invalid flags, missing/malformed config)
 `);
@@ -261,7 +289,14 @@ async function executeCheck(
   return hasErrors ? 1 : 0;
 }
 
-async function loadConfigFromPath(configPath: string): Promise<{ config?: MCPConfig; exitCode?: number }> {
+interface LoadedConfig {
+  config?: MCPConfig;
+  rawText?: string;
+  rawJson?: unknown;
+  exitCode?: number;
+}
+
+async function loadConfigFromPath(configPath: string): Promise<LoadedConfig> {
   if (!existsSync(configPath)) {
     console.error(pc.red(`Config file not found: ${configPath}`));
     return { exitCode: 2 };
@@ -296,10 +331,139 @@ async function loadConfigFromPath(configPath: string): Promise<{ config?: MCPCon
     return { exitCode: 2 };
   }
 
-  return { config };
+  return { config, rawText, rawJson };
 }
 
-export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
+async function defaultConfirm(question: string): Promise<boolean> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (await rl.question(question)).trim().toLowerCase();
+    return answer === 'y' || answer === 'yes';
+  } finally {
+    rl.close();
+  }
+}
+
+/**
+ * `mcp-doctor fix`: runs the same checks as `check`, then offers to apply
+ * every diagnostic whose suggestedFix carries a mechanical `patch` (see
+ * src/fix.ts). Per FR3-1: always shows a diff, always asks y/n per fix
+ * (never bulk-applies), always writes a `.bak` before touching the file,
+ * and `--dry-run` shows every diff without prompting or writing anything.
+ */
+async function executeFix(
+  configPath: string,
+  rawText: string,
+  rawJson: unknown,
+  config: MCPConfig,
+  args: ParsedArgs,
+  confirm: ConfirmFn,
+): Promise<number> {
+  const [checks] = await Promise.all([loadChecks(args.policyPath), loadProtocol()]);
+  const report = await runChecks(config, { timeoutMs: args.timeoutMs, checks, verbose: args.verbose });
+
+  let fixable = report.diagnostics.filter((d) => isConfigPatch(d.suggestedFix?.patch));
+  if (args.checkFilter) {
+    fixable = fixable.filter((d) => d.checkId === args.checkFilter);
+  }
+
+  // Multiple diagnostics can suggest the exact same patch; only offer it once.
+  const seen = new Set<string>();
+  const uniqueFixable: Array<{ diagnostic: DiagnosticResult; patch: ConfigPatch }> = [];
+  for (const diagnostic of fixable) {
+    const patch = diagnostic.suggestedFix!.patch as ConfigPatch;
+    const key = JSON.stringify(patch);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniqueFixable.push({ diagnostic, patch });
+  }
+
+  if (uniqueFixable.length === 0) {
+    console.log(pc.green('No auto-fixable diagnostics found.'));
+    return 0;
+  }
+
+  let working: unknown = rawJson;
+  let applied = 0;
+  let skipped = 0;
+  const dryRunEntries: Array<{
+    checkId: string;
+    serverName: string;
+    toolName?: string;
+    message: string;
+    diff: ReturnType<typeof diffConfigPatch>;
+  }> = [];
+
+  for (const { diagnostic, patch } of uniqueFixable) {
+    const diffs = diffConfigPatch(working, patch);
+    if (diffs.length === 0) continue; // already fixed — nothing to show or confirm
+
+    if (args.dryRun) {
+      dryRunEntries.push({
+        checkId: diagnostic.checkId,
+        serverName: diagnostic.serverName,
+        toolName: diagnostic.toolName,
+        message: diagnostic.message,
+        diff: diffs,
+      });
+      continue;
+    }
+
+    console.log('');
+    console.log(pc.bold(`[${diagnostic.severity}] ${diagnostic.serverName} — ${diagnostic.message} (${diagnostic.checkId})`));
+    for (const d of diffs) {
+      console.log(pc.red(`  - ${d.field}: ${JSON.stringify(d.before)}`));
+      console.log(pc.green(`  + ${d.field}: ${JSON.stringify(d.after)}`));
+    }
+
+    const proceed = await confirm(`Apply this fix to ${configPath}? [y/N] `);
+    if (proceed) {
+      working = applyConfigPatch(working, patch);
+      applied++;
+    } else {
+      skipped++;
+    }
+  }
+
+  if (args.dryRun) {
+    if (args.json) {
+      console.log(JSON.stringify({ fixable: dryRunEntries.length, fixes: dryRunEntries }, null, 2));
+    } else if (dryRunEntries.length === 0) {
+      console.log(pc.green('Dry run: nothing to fix (every fixable diagnostic is already applied).'));
+    } else {
+      for (const entry of dryRunEntries) {
+        console.log('');
+        console.log(pc.bold(`[dry-run] ${entry.serverName} — ${entry.message} (${entry.checkId})`));
+        for (const d of entry.diff) {
+          console.log(pc.red(`  - ${d.field}: ${JSON.stringify(d.before)}`));
+          console.log(pc.green(`  + ${d.field}: ${JSON.stringify(d.after)}`));
+        }
+      }
+      console.log(pc.dim(`\nDry run: ${dryRunEntries.length} fix(es) shown, 0 applied.`));
+    }
+    return 0;
+  }
+
+  if (applied > 0) {
+    const backupPath = `${configPath}.bak`;
+    writeFileSync(backupPath, rawText, 'utf-8');
+    writeFileSync(configPath, `${JSON.stringify(working, null, 2)}\n`, 'utf-8');
+    console.log(pc.green(`\nApplied ${applied} fix(es). Original saved to ${backupPath}.`));
+  } else {
+    console.log(pc.dim('\nNo fixes applied.'));
+  }
+  if (skipped > 0) {
+    console.log(pc.yellow(`Skipped ${skipped} fix(es).`));
+  }
+
+  return 0;
+}
+
+export interface CliDeps {
+  confirm?: ConfirmFn;
+}
+
+export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps = {}): Promise<number> {
   let args: ParsedArgs;
   try {
     args = parseArgs(argv);
@@ -311,6 +475,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (args.command === 'help') {
     printHelp();
     return 0;
+  }
+
+  if (args.command === 'fix' && args.registryServer) {
+    console.error(pc.red('mcp-doctor fix does not support --registry — there is no local file to write the fix to.'));
+    return 2;
   }
 
   // Handle diff command
@@ -470,6 +639,12 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
         },
       });
     });
+  }
+
+  if (args.command === 'fix') {
+    const { config, rawText, rawJson, exitCode } = await loadConfigFromPath(targetPath);
+    if (exitCode !== undefined || !config || rawText === undefined) return exitCode ?? 2;
+    return executeFix(targetPath, rawText, rawJson, config, args, deps.confirm ?? defaultConfirm);
   }
 
   const { config, exitCode } = await loadConfigFromPath(targetPath);
