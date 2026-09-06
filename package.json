@@ -1,6 +1,6 @@
 {
   "name": "mcp-medic",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Diagnose broken MCP (Model Context Protocol) server configs before they break your agent silently.",
   "type": "module",
   "main": "dist/index.js",
