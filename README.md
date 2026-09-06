@@ -151,23 +151,59 @@ Define organization-wide policies that compose with built-in checks:
 
 ## GitHub Action
 
-Add MCP config validation to your PR workflow:
+The `mcp-medic-action` (`shivam039/mcp-doctor@v1`) enables automated MCP configuration validation directly in your CI pipelines. It executes protocol handshakes, validates tool schemas, runs security heuristics, applies organizational policy rules, and gates pull requests against broken MCP setups before they affect downstream AI agents.
+
+> **Naming Note**: This GitHub repository (`shivam039/mcp-doctor`) powers the GitHub Action; for local terminal usage or npm scripts, the CLI package is published as **`mcp-medic`** (`npx mcp-medic`).
+
+### Example Workflow
 
 ```yaml
 name: Validate MCP Configs
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  validate:
+  validate-mcp:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: shivam039/mcp-doctor@main
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate MCP Configuration
+        uses: shivam039/mcp-doctor@v1.0.4  # or @v1
         with:
           config-path: './.mcp.json'
           fail-on: 'error'
           show-fixes: 'true'
+          export-junit: 'junit-mcp-report.xml'
 ```
+
+### Action Inputs
+
+| Input | Description | Required | Default |
+|---|---|---|---|
+| `config-path` | Path to the target MCP configuration file (defaults to auto-discovery across `.mcp.json` / Claude Desktop) | No | `''` |
+| `fail-on` | Failure threshold: `'error'` (fails on errors only) or `'warning'` (fails on any error or warning) | No | `'error'` |
+| `show-fixes` | Output actionable fix suggestions under flagged diagnostics (`'true'` / `'false'`) | No | `'true'` |
+| `policy-path` | Path to organizational policy JSON (`.mcp-medic-policy.json`) | No | `''` |
+| `export-junit` | Path to export JUnit XML report for CI test dashboards | No | `''` |
+| `export-json` | Path to export JSON diagnostics report | No | `''` |
+| `snapshot` | Path to baseline snapshot JSON to gate on regressions only | No | `''` |
+| `timeout` | Per-server handshake timeout in milliseconds | No | `'5000'` |
+| `verbose` | Output raw JSON-RPC traffic and debug logs (`'true'` / `'false'`) | No | `'false'` |
+
+### Exit & Failure Behavior
+
+The action adheres to strict exit code taxonomy:
+- **`0` (Success)**: All configured MCP servers passed handshake and schema validations cleanly (or warnings were found with `fail-on: 'error'`).
+- **`1` (Diagnostic Failure)**: One or more validation checks failed at or above the configured `fail-on` threshold.
+- **`2` (Usage / Configuration Error)**: Invalid config syntax, unreadable files, or malformed CLI arguments.
+
+> [!WARNING]
+> **Execution Security**: In order to perform authentic protocol handshakes, the action spawns stdio processes and establishes real HTTP/SSE network connections specified in your configuration. Only run against configurations and repositories you trust. See [SECURITY.md](./SECURITY.md) for full threat model details.
 
 ---
 
