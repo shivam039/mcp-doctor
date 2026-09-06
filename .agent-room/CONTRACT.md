@@ -92,11 +92,27 @@ export interface MCPServerInfo {
   version?: string;
 }
 
+export interface MCPResourceDefinition {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface MCPPromptDefinition {
+  name: string;
+  description?: string;
+  arguments?: unknown[];
+}
+
 export interface MCPConnection {
   server: MCPServerConfig;
   status: 'connected' | 'failed' | 'timeout';
   capabilities?: Record<string, unknown>; // raw capabilities from initialize response
   tools?: MCPToolDefinition[];
+  resources?: MCPResourceDefinition[]; // only populated if capabilities.resources was declared
+  prompts?: MCPPromptDefinition[];     // only populated if capabilities.prompts was declared
+  capabilityErrors?: { resources?: string; prompts?: string }; // best-effort; never fails the connection
   protocolVersion?: ProtocolVersionInfo;
   serverInfo?: MCPServerInfo;
   error?: {
@@ -188,6 +204,7 @@ export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunR
 | Security heuristic checks (Phase 3 — normally Jules' `src/checks/*` area; implemented by Antigravity this session per direct human request, since `fix` and the checks that produce fixable patches are tightly coupled) | **Antigravity** | `src/checks/security-*.ts` |
 | Secret redaction (headers/env/token-body values scrubbed before reaching any report, export, or diff) | **core** | `src/redact.ts` |
 | SARIF 2.1.0 export (`--export-sarif`, single-config `check`/`fix` path only — fleet/`check-all` has no SARIF formatter yet) | **core** | `src/sarif.ts` |
+| Resources/prompts capability inspection (passive `resources/list`/`prompts/list`, only when declared in `initialize`) | **Codex** | `src/protocol/connect.ts` |
 
 **Merge order:** core types → protocol layer → checks → CLI. Checks need a
 real or mocked `MCPConnection`; CLI needs checks; nobody should block on
