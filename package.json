@@ -1,11 +1,12 @@
 {
-  "name": "mcp-doctor",
+  "name": "mcpdoctor",
   "version": "1.0.0",
   "description": "Diagnose broken MCP (Model Context Protocol) server configs before they break your agent silently.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
+    "mcpdoctor": "dist/cli.js",
     "mcp-doctor": "dist/cli.js"
   },
   "files": [
