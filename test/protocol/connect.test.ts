@@ -2,6 +2,7 @@ import { execPath } from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { connect } from '../../src/protocol/connect.js';
+import { LATEST_SUPPORTED_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS } from '../../src/protocol/versions.js';
 
 const fixture = fileURLToPath(new URL('../fixtures/fake-mcp-server.js', import.meta.url));
 const config = (mode = 'normal') => ({
@@ -35,5 +36,83 @@ describe('stdio MCP protocol', () => {
     const result = await connect(config('malformed'), 1000);
     expect(result.status).toBe('failed');
     expect(result.error?.stage).toBe('handshake');
+  });
+});
+
+describe('protocol version negotiation', () => {
+  it('defaults to "auto" and requests the latest supported version', async () => {
+    const result = await connect(config('normal'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.protocolVersion).toEqual({
+      requested: LATEST_SUPPORTED_PROTOCOL_VERSION,
+      negotiated: LATEST_SUPPORTED_PROTOCOL_VERSION,
+      compatible: true,
+    });
+    expect(result.serverInfo).toEqual({ name: 'fake', version: '1.0.0' });
+  });
+
+  it('requests an explicit supported version and reports it as compatible', async () => {
+    const result = await connect(config('normal'), 1000, { protocolVersion: '2024-11-05' });
+    expect(result.status).toBe('connected');
+    expect(result.protocolVersion).toEqual({
+      requested: '2024-11-05',
+      negotiated: '2024-11-05',
+      compatible: true,
+    });
+  });
+
+  it('treats "auto" (case-sensitive keyword) the same as an unset preference', async () => {
+    const withAuto = await connect(config('normal'), 1000, { protocolVersion: 'auto' });
+    const withUnset = await connect(config('normal'), 1000, {});
+    expect(withAuto.protocolVersion?.requested).toBe(LATEST_SUPPORTED_PROTOCOL_VERSION);
+    expect(withUnset.protocolVersion?.requested).toBe(LATEST_SUPPORTED_PROTOCOL_VERSION);
+  });
+
+  it('accepts a compatible downgrade negotiated by the server', async () => {
+    const result = await connect(config('downgrade'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.protocolVersion).toEqual({
+      requested: LATEST_SUPPORTED_PROTOCOL_VERSION,
+      negotiated: '2024-11-05',
+      compatible: true,
+    });
+    // tools/list must still have been attempted for a compatible negotiation.
+    expect(result.tools?.[0]?.name).toBe('echo');
+  });
+
+  it('fails cleanly (without listing tools) when the server negotiates an unsupported version', async () => {
+    const result = await connect(config('incompatible-version'), 1000);
+    expect(result.status).toBe('failed');
+    expect(result.error?.stage).toBe('handshake');
+    expect(result.protocolVersion).toEqual({
+      requested: LATEST_SUPPORTED_PROTOCOL_VERSION,
+      negotiated: '1999-01-01',
+      compatible: false,
+    });
+    expect(result.tools).toBeUndefined();
+    for (const v of SUPPORTED_PROTOCOL_VERSIONS) {
+      expect(result.error?.message).toContain(v);
+    }
+  });
+
+  it('reports a handshake failure when the server omits protocolVersion (protocol violation)', async () => {
+    const result = await connect(config('no-protocol-version'), 1000);
+    expect(result.status).toBe('failed');
+    expect(result.error?.stage).toBe('handshake');
+    expect(result.protocolVersion).toBeUndefined();
+  });
+
+  it('refuses a known-unsupported protocol version without spawning a process', async () => {
+    // Deliberately bogus command: if this ever attempted to spawn, the
+    // failure would be a 'spawn' stage error instead of 'handshake'.
+    const result = await connect(
+      { ...config('normal'), command: '/definitely/not/a-command' },
+      1000,
+      { protocolVersion: '2026-07-28' },
+    );
+    expect(result.status).toBe('failed');
+    expect(result.error?.stage).toBe('handshake');
+    expect(result.error?.message).toContain('2026-07-28');
+    expect(result.error?.message.toLowerCase()).toContain('initialize');
   });
 });

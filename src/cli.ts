@@ -14,6 +14,7 @@ import { loadPolicy, createPolicyChecks } from './policy.js';
 import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline } from './fleet.js';
 import { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
 import type { Check, MCPConfig, RunReport, DiagnosticResult } from './types.js';
+import { SUPPORTED_PROTOCOL_VERSIONS } from './protocol/versions.js';
 import pc from 'picocolors';
 
 export interface ParsedArgs {
@@ -34,6 +35,8 @@ export interface ParsedArgs {
   failOn: 'error' | 'warning';
   checkFilter?: string;
   dryRun: boolean;
+  /** "auto" (default) or an explicit MCP protocolVersion string, e.g. "2025-06-18". */
+  protocolVersion: string;
 }
 
 /** Prompts the user with `question` and resolves true for an explicit "y"/"yes" answer. */
@@ -47,6 +50,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     verbose: false,
     failOn: 'error',
     dryRun: false,
+    protocolVersion: 'auto',
   };
   const positional: string[] = [];
 
@@ -105,6 +109,14 @@ export function parseArgs(argv: string[]): ParsedArgs {
         throw new Error(`--timeout requires a positive numeric value in ms, got: ${value ?? '(none)'}`);
       }
       args.timeoutMs = parsed;
+    } else if (arg === '--protocol-version') {
+      const val = argv[++i];
+      if (!val) {
+        throw new Error(
+          `--protocol-version requires a value: "auto" or an explicit version (e.g. ${SUPPORTED_PROTOCOL_VERSIONS[0]})`,
+        );
+      }
+      args.protocolVersion = val;
     } else {
       positional.push(arg);
     }
@@ -198,8 +210,16 @@ OPTIONS
   --verbose, -v         Print raw JSON-RPC traffic and debug messages
   --json                Output report in JSON format
   --timeout <ms>        Per-server handshake timeout in milliseconds (default: 5000)
+  --protocol-version <v> MCP protocolVersion to request: "auto" (default, latest supported)
+                        or an explicit version, e.g. ${SUPPORTED_PROTOCOL_VERSIONS[SUPPORTED_PROTOCOL_VERSIONS.length - 1]}
   --help, -h            Show help
   --version, -V         Print the installed mcp-medic version
+
+PROTOCOL VERSIONS
+  This client supports: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}
+  "auto" requests ${SUPPORTED_PROTOCOL_VERSIONS[0]} (the newest). The server may negotiate an
+  older version instead; mcp-medic reports both and fails cleanly if the
+  negotiated version isn't one this client supports.
 
 FIX OPTIONS (mcp-medic fix)
   --check <id>          Only offer fixes from this check id (e.g. security.untrusted-remote)
@@ -229,6 +249,8 @@ function colorizeHumanReport(text: string): string {
       if (/\[error\]/.test(line)) return pc.red(line);
       if (/\[warning\]/.test(line)) return pc.yellow(line);
       if (/Suggested fix:/.test(line)) return pc.cyan(line);
+      if (/^\s*Protocol:.*✗ incompatible/.test(line)) return pc.red(line);
+      if (/^\s*Protocol:/.test(line)) return pc.dim(line);
       return line;
     })
     .join('\n');
@@ -244,6 +266,7 @@ async function executeCheck(
     timeoutMs: args.timeoutMs,
     checks,
     verbose: args.verbose,
+    protocolVersion: args.protocolVersion,
   });
 
   // Handle baseline snapshot comparison
@@ -376,7 +399,12 @@ async function executeFix(
   confirm: ConfirmFn,
 ): Promise<number> {
   const [checks] = await Promise.all([loadChecks(args.policyPath), loadProtocol()]);
-  const report = await runChecks(config, { timeoutMs: args.timeoutMs, checks, verbose: args.verbose });
+  const report = await runChecks(config, {
+    timeoutMs: args.timeoutMs,
+    checks,
+    verbose: args.verbose,
+    protocolVersion: args.protocolVersion,
+  });
 
   let fixable = report.diagnostics.filter((d) => isConfigPatch(d.suggestedFix?.patch));
   if (args.checkFilter) {
@@ -551,6 +579,7 @@ export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps
       checks,
       timeoutMs: args.timeoutMs,
       verbose: args.verbose,
+      protocolVersion: args.protocolVersion,
     });
 
     if (args.exportJunit) {

@@ -27,11 +27,28 @@ export interface MCPToolDefinition {
   inputSchema: unknown;
 }
 
+export interface ProtocolVersionInfo {
+  /** The protocolVersion this client sent in `initialize`. */
+  requested: string;
+  /** The protocolVersion the server returned in its `initialize` response, if valid. */
+  negotiated?: string;
+  /** Whether `negotiated` is a version this client's transport can actually speak. */
+  compatible: boolean;
+}
+
+export interface MCPServerInfo {
+  name?: string;
+  version?: string;
+}
+
 export interface MCPConnection {
   server: MCPServerConfig;
   status: 'connected' | 'failed' | 'timeout';
   capabilities?: Record<string, unknown>;
   tools?: MCPToolDefinition[];
+  /** Set once an `initialize` response was received, even if negotiation was incompatible or a later stage failed. */
+  protocolVersion?: ProtocolVersionInfo;
+  serverInfo?: MCPServerInfo;
   error?: {
     stage: 'spawn' | 'handshake' | 'capability-negotiation' | 'list-tools';
     message: string;
@@ -68,6 +85,8 @@ export interface RunOptions {
   checks?: Check[];
   verbose?: boolean;
   onLog?: (message: string) => void;
+  /** "auto" (default) requests the newest protocol version this client supports; an explicit version string requests that version instead. */
+  protocolVersion?: string;
 }
 
 export interface RunReport {

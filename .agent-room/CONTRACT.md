@@ -80,11 +80,25 @@ export interface MCPConfig {
 
 // ---- Connection (produced by the protocol/handshake layer) ----
 
+export interface ProtocolVersionInfo {
+  requested: string;         // what this client asked for in `initialize` (after resolving "auto")
+  negotiated?: string;       // what the server's initialize response actually reported; absent if the
+                              // handshake failed before a response, or the response omitted it (protocol violation)
+  compatible: boolean;       // whether `negotiated` is one of this client's SUPPORTED_PROTOCOL_VERSIONS
+}
+
+export interface MCPServerInfo {
+  name?: string;
+  version?: string;
+}
+
 export interface MCPConnection {
   server: MCPServerConfig;
   status: 'connected' | 'failed' | 'timeout';
   capabilities?: Record<string, unknown>; // raw capabilities from initialize response
   tools?: MCPToolDefinition[];
+  protocolVersion?: ProtocolVersionInfo;
+  serverInfo?: MCPServerInfo;
   error?: {
     stage: 'spawn' | 'handshake' | 'capability-negotiation' | 'list-tools';
     message: string;
@@ -139,6 +153,9 @@ export interface RunOptions {
   checks?: Check[];         // defaults to all registered built-in checks
   verbose?: boolean;
   onLog?: (message: string) => void;
+  protocolVersion?: string; // MCP protocolVersion to request: "auto" (default) or an explicit
+                              // version string, e.g. "2025-06-18". See src/protocol/versions.ts
+                              // for SUPPORTED_PROTOCOL_VERSIONS and negotiation rules.
 }
 
 export interface RunReport {

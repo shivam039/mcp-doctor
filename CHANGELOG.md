@@ -4,6 +4,7 @@ All notable changes to `mcp-medic` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+- Protocol: real protocol version negotiation, replacing the previously hardcoded `2024-11-05`. New `--protocol-version <v>` CLI flag (`auto` by default, or an explicit version such as `2025-06-18`); `connect()` now reads back and validates what the server actually negotiated instead of assuming the request was honored, and disconnects cleanly (no `tools/list`) if the server negotiates a version this client doesn't support. Adds `src/protocol/versions.ts` (`SUPPORTED_PROTOCOL_VERSIONS`, currently `2025-11-25`/`2025-06-18`/`2025-03-26`/`2024-11-05`) and surfaces `Protocol: requested X, server negotiated Y` in reports. `2026-07-28` is a real, newer MCP spec version but changes the wire protocol itself (removes the `initialize` handshake); requesting it fails fast with an explicit, honest error rather than attempting a broken connection.
 - Benchmarks & Validation: added live MCP reference server fleet validation suite and published dynamic stress test benchmarks in [`docs/BENCHMARKS.md`](./docs/BENCHMARKS.md).
 - GitHub Action: hardened `action.yml` with complete input mappings, composite runner configuration, and comprehensive Marketplace documentation in `README.md`.
 
