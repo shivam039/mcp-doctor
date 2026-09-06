@@ -1,0 +1,9 @@
+{
+  "servers": [
+    { "name": "trusted", "transport": "http", "url": "https://mcp.example.com/api" },
+    { "name": "insecure-domain", "transport": "http", "url": "http://mcp.example.com/api" },
+    { "name": "ip-literal", "transport": "sse", "url": "https://203.0.113.10/mcp" },
+    { "name": "insecure-and-ip-literal", "transport": "http", "url": "http://198.51.100.7:8080/mcp" },
+    { "name": "local-dev", "transport": "http", "url": "http://127.0.0.1:3000/mcp" }
+  ]
+}

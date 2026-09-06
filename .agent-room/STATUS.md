@@ -12,6 +12,7 @@ Format: `[owner] area — status — last updated (UTC date)`
 - [codex] protocol/handshake layer — DONE — see HANDOFF/codex.md
 - [jules] schema validation checks — DONE (5 checks + fixtures + test suites) — 2026-09-06
 - [antigravity] CLI + fixtures + config-loader — DONE (works end-to-end against orchestrator) — see HANDOFF/antigravity.md
+- [antigravity] Phase 3: `mcp-doctor fix` + security.* checks — DONE (interactive auto-apply, .bak backup, --dry-run, --check filter, idempotent; 3 heuristic security checks) — see HANDOFF/antigravity.md
 
 ---
 
