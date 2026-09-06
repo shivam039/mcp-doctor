@@ -5,6 +5,9 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "mcp-medic": "dist/cli.js",
     "mcpmedic": "dist/cli.js",
@@ -35,7 +38,10 @@
     "json-schema",
     "linter",
     "llm",
-    "agents"
+    "agents",
+    "security",
+    "validator",
+    "ci"
   ],
   "author": "Shivam Dixit",
   "license": "MIT",

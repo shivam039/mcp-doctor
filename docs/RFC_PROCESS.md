@@ -13,5 +13,5 @@ The RFC process provides a consistent and open path for proposing major new feat
 
 1. **Draft**: Copy [RFC_TEMPLATE.md](./RFC_TEMPLATE.md) and fill out the sections.
 2. **Review**: Open a Pull Request titled `RFC: <Feature Name>`. Maintainers and community members review the technical design.
-3. **Decision**: An RFC is accepted when consensus is reached and at least 2 maintainers approve.
+3. **Decision**: An RFC is accepted when consensus is reached and approved by the project's maintainer(s) — today that's a single maintainer; as the maintainer group grows, this will require agreement from at least two.
 4. **Implementation**: Once accepted, implementation proceeds against the approved design.

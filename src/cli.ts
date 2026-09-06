@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import * as readline from 'node:readline/promises';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runChecks, registerConnectImpl } from './orchestrator.js';
 import { formatReportHuman, formatReportJSON } from './report.js';
 import { loadConfig } from './config-loader.js';
@@ -16,7 +17,7 @@ import type { Check, MCPConfig, RunReport, DiagnosticResult } from './types.js';
 import pc from 'picocolors';
 
 export interface ParsedArgs {
-  command: 'check' | 'watch' | 'check-all' | 'diff' | 'fix' | 'help';
+  command: 'check' | 'watch' | 'check-all' | 'diff' | 'fix' | 'help' | 'version';
   configPath?: string;
   configPathB?: string;
   globPattern?: string;
@@ -61,6 +62,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       args.dryRun = true;
     } else if (arg === '--help' || arg === '-h') {
       args.command = 'help';
+    } else if (arg === '--version' || arg === '-V') {
+      args.command = 'version';
     } else if (arg === '--fail-on') {
       const val = argv[++i];
       if (val !== 'error' && val !== 'warning') {
@@ -107,7 +110,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
   }
 
-  if (args.command !== 'help') {
+  if (args.command !== 'help' && args.command !== 'version') {
     const first = positional[0];
     if (first === 'check' || first === 'watch' || first === 'check-all' || first === 'diff' || first === 'fix') {
       args.command = first;
@@ -159,6 +162,17 @@ async function loadProtocol(): Promise<void> {
   }
 }
 
+/** Reads the installed package's version from package.json, one directory up from dist/cli.js. */
+function getPackageVersion(): string {
+  try {
+    const pkgPath = fileURLToPath(new URL('../package.json', import.meta.url));
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    return pkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 function printHelp(): void {
   const helpText = `
 ${pc.bold('mcp-medic')} — Diagnose broken MCP server configs before they break your agent.
@@ -185,6 +199,7 @@ OPTIONS
   --json                Output report in JSON format
   --timeout <ms>        Per-server handshake timeout in milliseconds (default: 5000)
   --help, -h            Show help
+  --version, -V         Print the installed mcp-medic version
 
 FIX OPTIONS (mcp-medic fix)
   --check <id>          Only offer fixes from this check id (e.g. security.untrusted-remote)
@@ -478,6 +493,11 @@ export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps
     return 0;
   }
 
+  if (args.command === 'version') {
+    console.log(getPackageVersion());
+    return 0;
+  }
+
   if (args.command === 'fix' && args.registryServer) {
     console.error(pc.red('mcp-doctor fix does not support --registry — there is no local file to write the fix to.'));
     return 2;
@@ -592,8 +612,9 @@ export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps
     const discovered = discoverConfigFiles();
     if (discovered.length === 0) {
       console.error(
-        pc.red(
-          'No MCP configuration files discovered. Specify a file path or create a .mcp.json in your project.',
+        pc.yellow(
+          'No MCP configuration files discovered (checked Claude Desktop, .mcp.json, and VS Code/Cursor locations). ' +
+            'Specify a file path (mcp-medic check <path>) or create a .mcp.json in your project.',
         ),
       );
       return 2;
