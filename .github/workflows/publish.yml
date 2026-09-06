@@ -37,9 +37,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
+
+      - name: Upgrade npm for OIDC Trusted Publishing
+        # Native tokenless "Trusted Publisher" OIDC publishing requires
+        # npm >=11.5.1; the version bundled with actions/setup-node's
+        # Node 22 is older than that, so upgrade explicitly.
+        run: |
+          npm install -g npm@latest
+          npm --version
 
       - name: Install dependencies
         run: npm ci
@@ -75,9 +83,11 @@ jobs:
         run: echo "Dry run completed successfully. Package is ready for publication."
 
       - name: Publish to NPM (Trusted Publisher OIDC)
+        # No NPM_TOKEN: npm's native OIDC Trusted Publishing exchanges this
+        # job's GitHub Actions id-token (permissions.id-token: write, above)
+        # for registry auth directly. This requires the mcp-medic package on
+        # npmjs.com to have a Trusted Publisher configured for this exact
+        # repo (shivam039/mcp-doctor) and workflow file (publish.yml) —
+        # see npmjs.com package Settings -> Publishing access.
         if: ${{ github.event.inputs.dry_run != 'true' }}
-        run: |
-          if [ -n "${{ secrets.NPM_TOKEN }}" ]; then
-            npm config set //registry.npmjs.org/:_authToken "${{ secrets.NPM_TOKEN }}"
-          fi
-          npm publish --access public --provenance
+        run: npm publish --access public --provenance
