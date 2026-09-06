@@ -27,6 +27,18 @@ export function formatReportHuman(
         `  Protocol: requested ${requested}, server negotiated ${negotiated ?? '(none)'} — ${statusText}`,
       );
     }
+    if (conn.tools) {
+      const parts = [`${conn.tools.length} tool(s)`];
+      if (conn.resources) parts.push(`${conn.resources.length} resource(s)`);
+      if (conn.prompts) parts.push(`${conn.prompts.length} prompt(s)`);
+      lines.push(`  Capabilities: ${parts.join(', ')}`);
+    }
+    if (conn.capabilityErrors?.resources) {
+      lines.push(`  resources/list: ${conn.capabilityErrors.resources}`);
+    }
+    if (conn.capabilityErrors?.prompts) {
+      lines.push(`  prompts/list: ${conn.capabilityErrors.prompts}`);
+    }
     if (conn.error) {
       lines.push(`  ${conn.error.stage}: ${conn.error.message}`);
     }

@@ -116,3 +116,46 @@ describe('protocol version negotiation', () => {
     expect(result.error?.message.toLowerCase()).toContain('initialize');
   });
 });
+
+describe('resources/prompts capability inspection', () => {
+  it('does not call resources/list or prompts/list when the server does not declare those capabilities', async () => {
+    const result = await connect(config('normal'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.resources).toBeUndefined();
+    expect(result.prompts).toBeUndefined();
+    expect(result.capabilityErrors).toBeUndefined();
+  });
+
+  it('lists resources and prompts when the server declares both capabilities', async () => {
+    const result = await connect(config('with-resources-prompts'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.capabilities).toEqual({ tools: {}, resources: {}, prompts: {} });
+    expect(result.resources).toEqual([
+      { uri: 'file:///tmp/notes.txt', name: 'notes', description: 'Scratch notes', mimeType: 'text/plain' },
+    ]);
+    expect(result.prompts).toEqual([
+      { name: 'summarize', description: 'Summarize the input', arguments: [{ name: 'text', required: true }] },
+    ]);
+    expect(result.capabilityErrors).toBeUndefined();
+    // tools/list must still have succeeded independently.
+    expect(result.tools?.[0]?.name).toBe('echo');
+  });
+
+  it('reports a capability error but still connects when resources/list is malformed', async () => {
+    const result = await connect(config('broken-resources'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.resources).toBeUndefined();
+    expect(result.capabilityErrors?.resources).toMatch(/resources array/);
+    // prompts capability was also declared and still listed successfully.
+    expect(result.prompts?.[0]?.name).toBe('summarize');
+    expect(result.capabilityErrors?.prompts).toBeUndefined();
+  });
+
+  it('reports a capability error but still connects when prompts/list is malformed', async () => {
+    const result = await connect(config('broken-prompts'), 1000);
+    expect(result.status).toBe('connected');
+    expect(result.prompts).toBeUndefined();
+    expect(result.capabilityErrors?.prompts).toMatch(/prompts array/);
+    expect(result.resources?.[0]?.uri).toBe('file:///tmp/notes.txt');
+  });
+});

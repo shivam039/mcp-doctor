@@ -208,3 +208,40 @@ to the single-config `check`/`fix` path only in this pass — `check-all`'s
 support was added later); left as a follow-up rather than rushed in
 alongside everything else.
 
+## 2026-09-06 — [codex] Resources/prompts capability inspection
+Decision: after a successful `tools/list`, `connect()` (`src/protocol/connect.ts`)
+inspects the server's declared `capabilities` object from `initialize` and, only
+if `capabilities.resources` / `capabilities.prompts` is present, makes one
+additional passive call — `resources/list` / `prompts/list` respectively — and
+normalizes the result into `MCPConnection.resources` / `.prompts`. A failure at
+this stage (timeout, malformed response, missing array) is captured in
+`MCPConnection.capabilityErrors` (`{ resources?: string; prompts?: string }`)
+rather than failing the whole connection — `tools` remains the one capability
+mcp-medic requires; resources/prompts are optional per the MCP spec, and a
+server can legitimately support only one or the other, or neither. Never calls
+`resources/read` or `prompts/get` (those retrieve/execute rather than
+enumerate) — this stays passive inspection, consistent with the standing
+constraint that mcp-medic's normal `check` never invokes real tool/resource/
+prompt behavior. `MCPConnection.resources`/`.prompts` are `undefined` (not `[]`)
+when the capability wasn't declared, so a report can distinguish "declared but
+empty" from "not supported."
+Also fixed, incidentally: the two existing JSON-RPC request/response id checks
+(`validateResponse(response, 1)` for `initialize`, `..., 2)` for `tools/list`)
+were hardcoded literals coupled to the transport's internal id counter — adding
+two more conditional requests made that fragile, so replaced with a local
+`nextExpectedId` counter incremented once per actual `.request()` call, in the
+order calls are made. Behavior for existing calls is unchanged (still 1, then 2).
+Reason: this was the next explicit protocol-correctness item from the standing
+engineering-upgrade backlog ("capability handling, tools/resources/prompts").
+`report.ts`'s human formatter gained a `Capabilities: N tool(s)[, N resource(s)]
+[, N prompt(s)]` line (resource/prompt counts only shown when declared) and
+surfaces `capabilityErrors` inline without marking the connection failed.
+New fixture modes in `test/fixtures/fake-mcp-server.js`: `with-resources-prompts`,
+`broken-resources`, `broken-prompts`. 151/151 tests passing (up from 144), with
+new coverage in `test/protocol/connect.test.ts` and a new `test/report.test.ts`.
+Deferred: pagination (`nextCursor`) is not handled for `resources/list`/
+`prompts/list` — matches the existing, equally unpaginated `tools/list`
+handling, not a regression, but a real gap for servers with large catalogs.
+No new `Check` was added to validate resource URIs or prompt argument
+schemas — this pass is inspection/exposure only, not a new quality check.
+

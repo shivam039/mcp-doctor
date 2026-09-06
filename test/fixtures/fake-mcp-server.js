@@ -3,6 +3,13 @@ import readline from 'node:readline';
 const mode = process.argv[2] ?? 'normal';
 const input = readline.createInterface({ input: process.stdin });
 
+const capabilitiesFor = (mode) => {
+  if (mode === 'with-resources-prompts' || mode === 'broken-resources' || mode === 'broken-prompts') {
+    return { tools: {}, resources: {}, prompts: {} };
+  }
+  return { tools: {} };
+};
+
 input.on('line', (line) => {
   const request = JSON.parse(line);
   if (mode === 'hang') return;
@@ -41,13 +48,15 @@ input.on('line', (line) => {
         },
       };
     } else {
-      // 'normal': echo back whatever protocolVersion the client requested.
+      // 'normal' and the resources/prompts modes: echo back whatever
+      // protocolVersion the client requested, and declare capabilities()
+      // based on mode.
       result = {
         jsonrpc: '2.0',
         id: request.id,
         result: {
           protocolVersion: request.params?.protocolVersion ?? '2024-11-05',
-          capabilities: { tools: {} },
+          capabilities: capabilitiesFor(mode),
           serverInfo: { name: 'fake', version: '1.0.0' },
         },
       };
@@ -58,6 +67,34 @@ input.on('line', (line) => {
       jsonrpc: '2.0',
       id: request.id,
       result: { tools: [{ name: 'echo', description: 'Echoes input', inputSchema: { type: 'object' } }] },
+    })}\n`);
+  } else if (request.method === 'resources/list') {
+    if (mode === 'broken-resources') {
+      // Declares the resources capability but returns a malformed response
+      // (no resources array) — exercises the soft-fail path.
+      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`);
+      return;
+    }
+    process.stdout.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        resources: [
+          { uri: 'file:///tmp/notes.txt', name: 'notes', description: 'Scratch notes', mimeType: 'text/plain' },
+        ],
+      },
+    })}\n`);
+  } else if (request.method === 'prompts/list') {
+    if (mode === 'broken-prompts') {
+      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`);
+      return;
+    }
+    process.stdout.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: request.id,
+      result: {
+        prompts: [{ name: 'summarize', description: 'Summarize the input', arguments: [{ name: 'text', required: true }] }],
+      },
     })}\n`);
   }
 });

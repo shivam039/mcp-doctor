@@ -27,6 +27,19 @@ export interface MCPToolDefinition {
   inputSchema: unknown;
 }
 
+export interface MCPResourceDefinition {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface MCPPromptDefinition {
+  name: string;
+  description?: string;
+  arguments?: unknown[];
+}
+
 export interface ProtocolVersionInfo {
   /** The protocolVersion this client sent in `initialize`. */
   requested: string;
@@ -46,6 +59,13 @@ export interface MCPConnection {
   status: 'connected' | 'failed' | 'timeout';
   capabilities?: Record<string, unknown>;
   tools?: MCPToolDefinition[];
+  /** Populated only if the server's `initialize` response declared a `resources` capability. */
+  resources?: MCPResourceDefinition[];
+  /** Populated only if the server's `initialize` response declared a `prompts` capability. */
+  prompts?: MCPPromptDefinition[];
+  /** Best-effort failures from optional capability inspection (resources/prompts) — these
+   * never fail the overall connection, since `tools` is the one capability mcp-medic requires. */
+  capabilityErrors?: { resources?: string; prompts?: string };
   /** Set once an `initialize` response was received, even if negotiation was incompatible or a later stage failed. */
   protocolVersion?: ProtocolVersionInfo;
   serverInfo?: MCPServerInfo;

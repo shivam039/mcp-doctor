@@ -1,7 +1,15 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import type { MCPConnection, MCPServerConfig, MCPServerInfo, MCPToolDefinition, RunOptions } from '../types.js';
+import type {
+  MCPConnection,
+  MCPServerConfig,
+  MCPServerInfo,
+  MCPToolDefinition,
+  MCPResourceDefinition,
+  MCPPromptDefinition,
+  RunOptions,
+} from '../types.js';
 import {
   KNOWN_UNSUPPORTED_PROTOCOL_VERSIONS,
   SUPPORTED_PROTOCOL_VERSIONS,
@@ -111,6 +119,37 @@ function normalizeTools(result: Record<string, unknown>): MCPToolDefinition[] {
       name: value.name,
       ...(typeof value.description === 'string' ? { description: value.description } : {}),
       inputSchema: value.inputSchema,
+    };
+  });
+}
+
+function normalizeResources(result: Record<string, unknown>): MCPResourceDefinition[] {
+  if (!Array.isArray(result.resources)) throw new Error('resources/list response has no resources array');
+  return result.resources.map((resource, index) => {
+    if (!resource || typeof resource !== 'object' || typeof (resource as { uri?: unknown }).uri !== 'string') {
+      throw new Error(`resources/list returned an invalid resource at index ${index}`);
+    }
+    const value = resource as { uri: string; name?: unknown; description?: unknown; mimeType?: unknown };
+    return {
+      uri: value.uri,
+      ...(typeof value.name === 'string' ? { name: value.name } : {}),
+      ...(typeof value.description === 'string' ? { description: value.description } : {}),
+      ...(typeof value.mimeType === 'string' ? { mimeType: value.mimeType } : {}),
+    };
+  });
+}
+
+function normalizePrompts(result: Record<string, unknown>): MCPPromptDefinition[] {
+  if (!Array.isArray(result.prompts)) throw new Error('prompts/list response has no prompts array');
+  return result.prompts.map((prompt, index) => {
+    if (!prompt || typeof prompt !== 'object' || typeof (prompt as { name?: unknown }).name !== 'string') {
+      throw new Error(`prompts/list returned an invalid prompt at index ${index}`);
+    }
+    const value = prompt as { name: string; description?: unknown; arguments?: unknown };
+    return {
+      name: value.name,
+      ...(typeof value.description === 'string' ? { description: value.description } : {}),
+      ...(Array.isArray(value.arguments) ? { arguments: value.arguments } : {}),
     };
   });
 }
@@ -494,6 +533,12 @@ export async function connect(
       );
     }
 
+    // Requests are numbered sequentially in the order they're actually sent
+    // (notifications don't consume an id) — tracked locally rather than
+    // hardcoded, since which optional capability calls happen below depends
+    // on what the server declares.
+    let nextExpectedId = 1;
+
     let initialize: Record<string, unknown>;
     try {
       const response = await withTimeout(
@@ -505,7 +550,7 @@ export async function connect(
         timeoutMs,
         'initialize handshake',
       );
-      initialize = validateResponse(response, 1);
+      initialize = validateResponse(response, nextExpectedId++);
       if (!initialize.capabilities || typeof initialize.capabilities !== 'object') {
         throw new Error('initialize response has no capabilities object');
       }
@@ -567,22 +612,14 @@ export async function connect(
       );
     }
 
+    let tools: MCPToolDefinition[];
     try {
-      const tools = normalizeTools(
+      tools = normalizeTools(
         validateResponse(
           await withTimeout(transport.request('tools/list'), timeoutMs, 'tools/list'),
-          2,
+          nextExpectedId++,
         ),
       );
-      return {
-        server: config,
-        status: 'connected',
-        capabilities,
-        tools,
-        protocolVersion,
-        serverInfo,
-        latencyMs: Date.now() - started,
-      };
     } catch (error) {
       return failed(
         config,
@@ -593,6 +630,56 @@ export async function connect(
         { protocolVersion, serverInfo },
       );
     }
+
+    // Resources and prompts are optional MCP capabilities: only inspect them
+    // if the server actually declared support in its initialize response.
+    // Passive enumeration only (resources/list, prompts/list) — never
+    // resources/read or prompts/get, which would be real invocation.
+    // A failure here is never fatal to the connection: tools is the one
+    // capability mcp-medic requires, so a broken resources/prompts listing
+    // is reported alongside a still-successful connection.
+    let resources: MCPResourceDefinition[] | undefined;
+    let prompts: MCPPromptDefinition[] | undefined;
+    const capabilityErrors: NonNullable<MCPConnection['capabilityErrors']> = {};
+
+    if (capabilities.resources && typeof capabilities.resources === 'object') {
+      try {
+        resources = normalizeResources(
+          validateResponse(
+            await withTimeout(transport.request('resources/list'), timeoutMs, 'resources/list'),
+            nextExpectedId++,
+          ),
+        );
+      } catch (error) {
+        capabilityErrors.resources = messageOf(error);
+      }
+    }
+
+    if (capabilities.prompts && typeof capabilities.prompts === 'object') {
+      try {
+        prompts = normalizePrompts(
+          validateResponse(
+            await withTimeout(transport.request('prompts/list'), timeoutMs, 'prompts/list'),
+            nextExpectedId++,
+          ),
+        );
+      } catch (error) {
+        capabilityErrors.prompts = messageOf(error);
+      }
+    }
+
+    return {
+      server: config,
+      status: 'connected',
+      capabilities,
+      tools,
+      ...(resources !== undefined ? { resources } : {}),
+      ...(prompts !== undefined ? { prompts } : {}),
+      ...(Object.keys(capabilityErrors).length > 0 ? { capabilityErrors } : {}),
+      protocolVersion,
+      serverInfo,
+      latencyMs: Date.now() - started,
+    };
   } catch (error) {
     return failed(config, 'failed', 'handshake', messageOf(error), error);
   } finally {
