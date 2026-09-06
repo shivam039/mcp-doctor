@@ -30,3 +30,4 @@ The following core interfaces and contracts are frozen:
 
 - **Deprecation Notices**: Any feature or API planned for removal will be marked as deprecated for at least one major release cycle with runtime warnings.
 - **Breaking Changes**: Breaking changes to core types or CLI flags will only occur in major version increments (e.g. `2.0.0`).
+- **Binary Aliases (`mcp-doctor`, `mcpdoctor`)**: Included in `v1.x` solely for backward compatibility with early development. These aliases are officially deprecated and slated for removal in `v2.0.0`. Users and automated tooling should invoke `mcp-medic` directly.

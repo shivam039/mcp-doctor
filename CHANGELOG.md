@@ -4,7 +4,7 @@ All notable changes to `mcp-medic` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
-- Documentation: added repository metadata guidance, Quick Start invocation clarity, and Marketplace readiness roadmap for the VS Code extension.
+- Documentation: added repository metadata guidance, Quick Start invocation clarity, Marketplace readiness roadmap for VS Code extension, and deprecation roadmap for legacy `mcp-doctor` binary aliases (slated for removal in `v2.0.0`).
 
 ## [1.0.2] — 2026-09-06
 
