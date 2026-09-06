@@ -36,3 +36,13 @@ close stdio child processes immediately after initialize and tools/list finish.
 Reason: the package has no SDK dependency and the connection contract stores
 negotiated data rather than a live session; this keeps the public dependency
 surface unchanged and prevents leaked server processes.
+
+## 2026-09-06 — [jules] Zero-dependency lightweight validation in sample-call simulation
+Decision: Implement a built-in lightweight validator and synthetic payload generator
+in `src/checks/sample-call-simulation.ts` without introducing new dependencies like `ajv`
+in v1, but report caveats when complex schemas (`$ref`, `oneOf`, `anyOf`, `allOf`) are encountered.
+Reason: Keeps runtime dependencies at zero per current codebase philosophy while
+reliably detecting self-contradictory schemas (empty enums, conflicting min/max bounds,
+missing required property definitions). Adding `ajv` as a production dependency can be
+evaluated in a future iteration if deep JSON Schema draft-07/2020-12 spec compliance is needed.
+
