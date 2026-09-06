@@ -44,4 +44,10 @@ describe('CLI argument parsing and execution', () => {
     const code = await main(['check', 'test/fixtures/configs/wrong-transport-value.json']);
     expect(code).toBe(2);
   });
+
+  it('parses --registry argument correctly', () => {
+    const args = parseArgs(['check', '--registry', '@modelcontextprotocol/server-memory']);
+    expect(args.command).toBe('check');
+    expect(args.registryServer).toBe('@modelcontextprotocol/server-memory');
+  });
 });

@@ -5,12 +5,14 @@ import { formatReportHuman, formatReportJSON } from './report.js';
 import { loadConfig } from './config-loader.js';
 import { discoverConfigFiles } from './discovery.js';
 import { watchFileDebounced } from './watch.js';
-import type { Check } from './types.js';
+import { resolveRegistryServer } from './registry.js';
+import type { Check, MCPConfig } from './types.js';
 import pc from 'picocolors';
 
 export interface ParsedArgs {
   command: 'check' | 'watch' | 'help';
   configPath?: string;
+  registryServer?: string;
   json: boolean;
   timeoutMs?: number;
   showFixes: boolean;
@@ -44,6 +46,12 @@ export function parseArgs(argv: string[]): ParsedArgs {
         throw new Error(`--fail-on requires "error" or "warning", got: ${val ?? '(none)'}`);
       }
       args.failOn = val;
+    } else if (arg === '--registry') {
+      const val = argv[++i];
+      if (!val) {
+        throw new Error('--registry requires a server identifier or registry URL');
+      }
+      args.registryServer = val;
     } else if (arg === '--config') {
       const val = argv[++i];
       if (!val) {
@@ -106,10 +114,12 @@ ${pc.bold('mcp-doctor')} — Diagnose broken MCP server configs before they brea
 
 ${pc.bold('USAGE')}
   $ mcp-doctor [check] [path/to/config.json] [options]
+  $ mcp-doctor check --registry <server-id> [options]
   $ mcp-doctor watch <path/to/config.json> [options]
 
 ${pc.bold('OPTIONS')}
   --config <path>       Specify path to MCP configuration file
+  --registry <id/url>   Validate published registry entry directly
   --show-fixes          Print actionable suggested fixes under diagnostics
   --fail-on <severity>  Exit with code 1 on 'error' (default) or 'warning'
   --verbose, -v         Print raw JSON-RPC traffic and debug messages
@@ -139,43 +149,9 @@ function colorizeHumanReport(text: string): string {
 }
 
 async function executeCheck(
-  configPath: string,
+  config: MCPConfig,
   args: ParsedArgs,
 ): Promise<number> {
-  if (!existsSync(configPath)) {
-    console.error(pc.red(`Config file not found: ${configPath}`));
-    return 2;
-  }
-
-  let rawText: string;
-  try {
-    rawText = readFileSync(configPath, 'utf-8');
-  } catch (err) {
-    console.error(
-      pc.red(`Could not read config file: ${err instanceof Error ? err.message : String(err)}`),
-    );
-    return 2;
-  }
-
-  let rawJson: unknown;
-  try {
-    rawJson = JSON.parse(rawText);
-  } catch (err) {
-    console.error(
-      pc.red(`Could not parse config as JSON: ${err instanceof Error ? err.message : String(err)}`),
-    );
-    return 2;
-  }
-
-  const { config, errors } = loadConfig(rawJson, configPath);
-  if (errors.length > 0 || !config) {
-    console.error(pc.red('Config validation failed:'));
-    for (const error of errors) {
-      console.error(pc.red(`  - ${error}`));
-    }
-    return 2;
-  }
-
   const [checks] = await Promise.all([loadChecks(), loadProtocol()]);
 
   const report = await runChecks(config, {
@@ -201,6 +177,44 @@ async function executeCheck(
   return hasErrors ? 1 : 0;
 }
 
+async function loadConfigFromPath(configPath: string): Promise<{ config?: MCPConfig; exitCode?: number }> {
+  if (!existsSync(configPath)) {
+    console.error(pc.red(`Config file not found: ${configPath}`));
+    return { exitCode: 2 };
+  }
+
+  let rawText: string;
+  try {
+    rawText = readFileSync(configPath, 'utf-8');
+  } catch (err) {
+    console.error(
+      pc.red(`Could not read config file: ${err instanceof Error ? err.message : String(err)}`),
+    );
+    return { exitCode: 2 };
+  }
+
+  let rawJson: unknown;
+  try {
+    rawJson = JSON.parse(rawText);
+  } catch (err) {
+    console.error(
+      pc.red(`Could not parse config as JSON: ${err instanceof Error ? err.message : String(err)}`),
+    );
+    return { exitCode: 2 };
+  }
+
+  const { config, errors } = loadConfig(rawJson, configPath);
+  if (errors.length > 0 || !config) {
+    console.error(pc.red('Config validation failed:'));
+    for (const error of errors) {
+      console.error(pc.red(`  - ${error}`));
+    }
+    return { exitCode: 2 };
+  }
+
+  return { config };
+}
+
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   let args: ParsedArgs;
   try {
@@ -213,6 +227,25 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (args.command === 'help') {
     printHelp();
     return 0;
+  }
+
+  // Handle direct registry validation
+  if (args.registryServer) {
+    try {
+      const serverConfig = await resolveRegistryServer(args.registryServer, {
+        timeoutMs: args.timeoutMs,
+      });
+      const config: MCPConfig = {
+        servers: [serverConfig],
+        sourcePath: `registry:${args.registryServer}`,
+      };
+      return await executeCheck(config, args);
+    } catch (err) {
+      console.error(
+        pc.red(`Failed to resolve registry server: ${err instanceof Error ? err.message : String(err)}`),
+      );
+      return 2;
+    }
   }
 
   // Resolve config path (explicit argument or auto-discovery)
@@ -248,7 +281,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     if (!args.json) {
       console.log(pc.bold(`\nWatching ${targetPath} for changes... (Press Ctrl+C to exit)\n`));
     }
-    await executeCheck(targetPath, args);
+    const { config, exitCode } = await loadConfigFromPath(targetPath);
+    if (exitCode !== undefined || !config) return exitCode ?? 2;
+
+    await executeCheck(config, args);
 
     return new Promise<number>(() => {
       watchFileDebounced(targetPath!, {
@@ -256,7 +292,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
           if (!args.json) {
             console.log(pc.dim(`\n--- Config changed: re-running checks ---`));
           }
-          await executeCheck(targetPath!, args);
+          const loaded = await loadConfigFromPath(targetPath!);
+          if (loaded.config) {
+            await executeCheck(loaded.config, args);
+          }
         },
         onError: (err) => {
           console.error(pc.red(`Watch error: ${err.message}`));
@@ -265,7 +304,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     });
   }
 
-  return executeCheck(targetPath, args);
+  const { config, exitCode } = await loadConfigFromPath(targetPath);
+  if (exitCode !== undefined || !config) return exitCode ?? 2;
+
+  return executeCheck(config, args);
 }
 
 // Only invoke automatically when run as CLI entry point
