@@ -1,0 +1,315 @@
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { MCPConnection, MCPServerConfig, MCPToolDefinition } from '../types.js';
+
+const PROTOCOL_VERSION = '2024-11-05';
+const CLIENT_INFO = { name: 'mcp-doctor', version: '0.0.1' };
+
+interface JsonRpcResponse {
+  jsonrpc: '2.0';
+  id?: number;
+  result?: Record<string, unknown>;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+interface Transport {
+  request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse>;
+  notify(method: string, params?: Record<string, unknown>): Promise<void>;
+  close(): Promise<void>;
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function failed(
+  config: MCPServerConfig,
+  status: 'failed' | 'timeout',
+  stage: 'spawn' | 'handshake' | 'capability-negotiation' | 'list-tools',
+  message: string,
+  raw?: unknown,
+): MCPConnection {
+  return { server: config, status, error: { stage, message, ...(raw === undefined ? {} : { raw }) } };
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function validateResponse(response: JsonRpcResponse, expectedId: number): Record<string, unknown> {
+  if (!response || response.jsonrpc !== '2.0' || response.id !== expectedId) {
+    throw new Error('invalid JSON-RPC response');
+  }
+  if (response.error) {
+    throw new Error(`MCP request failed (${response.error.code}): ${response.error.message}`);
+  }
+  if (!response.result || typeof response.result !== 'object') {
+    throw new Error('JSON-RPC response has no result');
+  }
+  return response.result;
+}
+
+function normalizeTools(result: Record<string, unknown>): MCPToolDefinition[] {
+  if (!Array.isArray(result.tools)) throw new Error('tools/list response has no tools array');
+  return result.tools.map((tool, index) => {
+    if (!tool || typeof tool !== 'object' || typeof (tool as { name?: unknown }).name !== 'string') {
+      throw new Error(`tools/list returned an invalid tool at index ${index}`);
+    }
+    const value = tool as { name: string; description?: unknown; inputSchema?: unknown };
+    return {
+      name: value.name,
+      ...(typeof value.description === 'string' ? { description: value.description } : {}),
+      inputSchema: value.inputSchema,
+    };
+  });
+}
+
+class StdioTransport implements Transport {
+  private readonly process: ChildProcessWithoutNullStreams;
+  private nextId = 1;
+  private readonly pending = new Map<number, { resolve: (response: JsonRpcResponse) => void; reject: (error: Error) => void }>();
+  private buffer = '';
+  private closed = false;
+  private readonly exitError: Promise<never>;
+
+  constructor(config: MCPServerConfig) {
+    if (!config.command) throw new Error('stdio transport requires command');
+    this.process = spawn(config.command, config.args ?? [], {
+      env: { ...process.env, ...(config.env ?? {}) },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    this.exitError = new Promise((_, reject) => {
+      this.process.once('error', (error) => reject(new Error(`failed to start MCP server: ${error.message}`)));
+      this.process.once('exit', (code, signal) => {
+        if (!this.closed) reject(new Error(`MCP server exited before responding (code=${code ?? 'unknown'}, signal=${signal ?? 'none'})`));
+      });
+    });
+    this.process.stdout.setEncoding('utf8');
+    this.process.stdout.on('data', (chunk: string) => this.consume(chunk));
+  }
+
+  private consume(chunk: string): void {
+    this.buffer += chunk;
+    let newline = this.buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = this.buffer.slice(0, newline).trim();
+      this.buffer = this.buffer.slice(newline + 1);
+      newline = this.buffer.indexOf('\n');
+      if (!line) continue;
+      try {
+        const parsed = JSON.parse(line) as JsonRpcResponse;
+        if (typeof parsed.id === 'number') {
+          const waiter = this.pending.get(parsed.id);
+          if (waiter) {
+            this.pending.delete(parsed.id);
+            waiter.resolve(parsed);
+          }
+        }
+      } catch {
+        // Ignore server log noise or malformed notifications; the request timeout reports the failure.
+      }
+    }
+  }
+
+  request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
+    const id = this.nextId++;
+    const payload = JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) }) + '\n';
+    return Promise.race([
+      new Promise<JsonRpcResponse>((resolve, reject) => {
+        this.pending.set(id, { resolve, reject });
+        this.process.stdin.write(payload, (error) => {
+          if (error) {
+            this.pending.delete(id);
+            reject(error);
+          }
+        });
+      }),
+      this.exitError,
+    ]);
+  }
+
+  notify(method: string, params?: Record<string, unknown>): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const payload = JSON.stringify({ jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) }) + '\n';
+      this.process.stdin.write(payload, (error) => (error ? reject(error) : resolve()));
+    });
+  }
+
+  async close(): Promise<void> {
+    this.closed = true;
+    for (const waiter of this.pending.values()) waiter.reject(new Error('MCP server connection closed'));
+    this.pending.clear();
+    if (!this.process.killed) {
+      this.process.kill();
+      await new Promise<void>((resolve) => this.process.once('close', () => resolve()));
+    }
+  }
+}
+
+async function httpJson(
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+): Promise<JsonRpcResponse> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(`MCP HTTP request failed with status ${response.status}`);
+  const text = await response.text();
+  const data = text.trim().startsWith('data:') ? text.split(/\r?\n/).find((line) => line.startsWith('data:'))?.slice(5).trim() : text;
+  if (!data) throw new Error('MCP HTTP response was empty');
+  return JSON.parse(data) as JsonRpcResponse;
+}
+
+class HttpTransport implements Transport {
+  private nextId = 1;
+  constructor(private readonly config: MCPServerConfig) {
+    if (!config.url) throw new Error(`${config.transport} transport requires url`);
+  }
+  async request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
+    const id = this.nextId++;
+    return httpJson(this.config.url!, this.config.headers ?? {}, { jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) });
+  }
+  async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+    const response = await fetch(this.config.url!, {
+      method: 'POST',
+      headers: { Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
+      body: JSON.stringify({ jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) }),
+    });
+    if (!response.ok) throw new Error(`MCP HTTP notification failed with status ${response.status}`);
+  }
+  async close(): Promise<void> {}
+}
+
+class SseTransport implements Transport {
+  private nextId = 1;
+  private endpointPromise: Promise<string> | undefined;
+
+  constructor(private readonly config: MCPServerConfig) {
+    if (!config.url) throw new Error('sse transport requires url');
+  }
+
+  private async endpoint(): Promise<string> {
+    if (!this.endpointPromise) {
+      this.endpointPromise = (async () => {
+        const response = await fetch(this.config.url!, { headers: { Accept: 'text/event-stream', ...(this.config.headers ?? {}) } });
+        if (!response.ok || !response.body) throw new Error(`MCP SSE connection failed with status ${response.status}`);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        try {
+          while (true) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            buffer += decoder.decode(chunk.value, { stream: true });
+            const event = buffer.match(/(?:^|\r?\n)\r?\n([\s\S]*?)(?:\r?\n\r?\n|$)/);
+            if (!event) continue;
+            buffer = buffer.slice((event.index ?? 0) + event[0].length);
+            const data = event[1].split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
+            if (data) return new URL(data, this.config.url!).toString();
+          }
+        } finally {
+          await reader.cancel();
+        }
+        throw new Error('MCP SSE stream ended before endpoint event');
+      })();
+    }
+    return this.endpointPromise;
+  }
+
+  async request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
+    const id = this.nextId++;
+    return httpJson(await this.endpoint(), this.config.headers ?? {}, { jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) });
+  }
+
+  async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+    const endpoint = await this.endpoint();
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
+      body: JSON.stringify({ jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) }),
+    });
+    if (!response.ok) throw new Error(`MCP SSE notification failed with status ${response.status}`);
+  }
+
+  async close(): Promise<void> {}
+}
+
+export async function connect(config: MCPServerConfig, timeoutMs: number): Promise<MCPConnection> {
+  const started = Date.now();
+  let transport: Transport | undefined;
+  try {
+    if (config.transport === 'stdio') {
+      try {
+        transport = new StdioTransport(config);
+      } catch (error) {
+        return failed(config, 'failed', 'spawn', messageOf(error), error);
+      }
+    } else if (config.transport === 'sse' || config.transport === 'http') {
+      try {
+        transport = config.transport === 'sse' ? new SseTransport(config) : new HttpTransport(config);
+      } catch (error) {
+        return failed(config, 'failed', 'spawn', messageOf(error), error);
+      }
+    } else {
+      return failed(config, 'failed', 'spawn', `unsupported transport: ${String(config.transport)}`);
+    }
+
+    let initialize: Record<string, unknown>;
+    try {
+      const response = await withTimeout(
+        transport.request('initialize', {
+          protocolVersion: PROTOCOL_VERSION,
+          capabilities: {},
+          clientInfo: CLIENT_INFO,
+        }),
+        timeoutMs,
+        'initialize handshake',
+      );
+      initialize = validateResponse(response, 1);
+      if (!initialize.capabilities || typeof initialize.capabilities !== 'object') {
+        throw new Error('initialize response has no capabilities object');
+      }
+    } catch (error) {
+      const timedOut = messageOf(error).includes('timed out');
+      const message = messageOf(error);
+      return failed(config, timedOut ? 'timeout' : 'failed', message.startsWith('failed to start') ? 'spawn' : 'handshake', message, error);
+    }
+
+    try {
+      await withTimeout(transport.notify('notifications/initialized'), timeoutMs, 'initialized notification');
+    } catch (error) {
+      return failed(config, messageOf(error).includes('timed out') ? 'timeout' : 'failed', 'capability-negotiation', messageOf(error), error);
+    }
+
+    try {
+      const tools = normalizeTools(validateResponse(await withTimeout(transport.request('tools/list'), timeoutMs, 'tools/list'), 2));
+      return {
+        server: config,
+        status: 'connected',
+        capabilities: initialize.capabilities as Record<string, unknown>,
+        tools,
+        latencyMs: Date.now() - started,
+      };
+    } catch (error) {
+      return failed(config, messageOf(error).includes('timed out') ? 'timeout' : 'failed', 'list-tools', messageOf(error), error);
+    }
+  } catch (error) {
+    return failed(config, 'failed', 'handshake', messageOf(error), error);
+  } finally {
+    await transport?.close().catch(() => undefined);
+  }
+}

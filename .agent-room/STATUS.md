@@ -9,7 +9,7 @@ Format: `[owner] area — status — last updated (UTC date)`
 ---
 
 - [core] CONTRACT.md types + orchestrator skeleton — DONE — see HANDOFF/claude.md
-- [codex] protocol/handshake layer — NOT STARTED
+- [codex] protocol/handshake layer — DONE — see HANDOFF/codex.md
 - [jules] schema validation checks — NOT STARTED
 - [antigravity] CLI + fixtures — NOT STARTED
 

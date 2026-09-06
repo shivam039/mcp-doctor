@@ -28,3 +28,11 @@ return an `error`-severity `DiagnosticResult` instead of throwing.
 Reason: one malformed community/future check shouldn't crash the whole run;
 matches the "isolate failures" pattern used elsewhere in these kinds of
 diagnostic tools.
+
+## 2026-09-06 — [codex] Protocol transport implementation
+Decision: Implement the MCP JSON-RPC transport with Node primitives rather than
+adding `@modelcontextprotocol/sdk`, use protocol version `2024-11-05`, and
+close stdio child processes immediately after initialize and tools/list finish.
+Reason: the package has no SDK dependency and the connection contract stores
+negotiated data rather than a live session; this keeps the public dependency
+surface unchanged and prevents leaked server processes.
