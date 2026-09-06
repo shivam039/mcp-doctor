@@ -28,8 +28,8 @@ describe('runCheckConformanceSuite', () => {
 
   it('fails a check that throws uncaught exceptions', async () => {
     const throwingCheck: Check = {
-      id: 'mcp-doctor-check-throwing',
-      description: 'A check that throws',
+      id: 'mcp-medic-check-throwing',
+      description: 'A check that throws unexpectedly',
       run(_conn: MCPConnection): DiagnosticResult[] {
         throw new Error('uncaught fatal exception');
       },

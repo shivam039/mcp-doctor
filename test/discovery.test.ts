@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
 describe('discoverConfigFiles', () => {
-  const testDir = join(tmpdir(), 'mcp-doctor-discovery-test-' + Date.now());
+  const testDir = join(tmpdir(), 'mcp-medic-discovery-test-' + Date.now());
 
   beforeEach(() => {
     mkdirSync(testDir, { recursive: true });

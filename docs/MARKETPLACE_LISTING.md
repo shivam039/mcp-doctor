@@ -1,13 +1,13 @@
 # VS Code Marketplace Listing Assets
 
-This document contains the official metadata, copy, and promotional assets for publishing the `mcp-doctor` extension on the [Visual Studio Code Marketplace](https://marketplace.visualstudio.com/).
+This document contains the official metadata, copy, and promotional assets for publishing the `mcp-medic` extension on the [Visual Studio Code Marketplace](https://marketplace.visualstudio.com/).
 
 ---
 
 ## Listing Metadata
 
-- **Extension ID**: `shivam039.mcp-doctor`
-- **Display Name**: `MCP Doctor — Model Context Protocol Diagnostics`
+- **Extension ID**: `shivam039.mcp-medic`
+- **Display Name**: `MCP Medic — Model Context Protocol Diagnostics`
 - **Short Tagline (120 chars max)**:
   `Diagnose broken MCP server configs and schemas in real-time with inline squiggles, hover fixes, and zero setup.`
 - **Categories**: `Linters`, `Programming Languages`, `Testing`
@@ -19,11 +19,11 @@ This document contains the official metadata, copy, and promotional assets for p
 ## Marketplace Description Copy
 
 ```markdown
-# MCP Doctor for Visual Studio Code
+# MCP Medic for Visual Studio Code
 
 Diagnose broken MCP (Model Context Protocol) server configs before they break your agent silently.
 
-MCP Doctor provides real-time in-editor diagnostics and hover tooltips for `.mcp.json`, `claude_desktop_config.json`, and workspace MCP settings.
+MCP Medic provides real-time in-editor diagnostics and hover tooltips for `.mcp.json`, `claude_desktop_config.json`, and workspace MCP settings.
 
 ---
 
@@ -32,7 +32,7 @@ MCP Doctor provides real-time in-editor diagnostics and hover tooltips for `.mcp
 - 🔴 **Instant Error Squiggles**: Flags missing required fields, unrecognized types, missing tool descriptions, and malformed schemas as you type.
 - 💡 **Actionable Hover Tooltips**: Hover over any diagnostic to see the full root-cause explanation and suggested fix.
 - ⚡ **Zero Setup**: Automatically detects `.mcp.json`, `mcp.json`, and Claude Desktop configuration files.
-- 🛡️ **Zero Runtime Overhead**: Lightweight analysis powered by the frozen `mcp-doctor` core engine.
+- 🛡️ **Zero Runtime Overhead**: Lightweight analysis powered by the frozen `mcp-medic` core engine.
 
 ---
 
@@ -59,7 +59,7 @@ MCP Doctor provides real-time in-editor diagnostics and hover tooltips for `.mcp
 Need to run diagnostics in CI or test standalone handshakes? Use the companion CLI:
 
 \`\`\`bash
-npx mcp-doctor check
+npx mcp-medic check
 \`\`\`
 
 ---

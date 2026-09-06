@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import type { MCPConnection, MCPServerConfig, MCPToolDefinition, RunOptions } from '../types.js';
 
 const PROTOCOL_VERSION = '2024-11-05';
-const CLIENT_INFO = { name: 'mcp-doctor', version: '0.0.1' };
+const CLIENT_INFO = { name: 'mcp-medic', version: '1.0.0' };
 
 interface JsonRpcResponse {
   jsonrpc: '2.0';

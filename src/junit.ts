@@ -20,7 +20,7 @@ export function formatReportJUnit(report: RunReport): string {
 
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push(
-    `<testsuites name="mcp-doctor" tests="${totalTests}" failures="${totalErrors}" errors="0">`,
+    `<testsuites name="mcp-medic" tests="${totalTests}" failures="${totalErrors}" errors="0">`,
   );
   lines.push(
     `  <testsuite name="${escapeXml(report.configSource || 'mcp-config')}" tests="${totalTests}" failures="${totalErrors}">`,
@@ -76,7 +76,7 @@ export function formatFleetReportJUnit(fleetReport: FleetReport): string {
   const lines: string[] = [];
   lines.push('<?xml version="1.0" encoding="UTF-8"?>');
   lines.push(
-    `<testsuites name="mcp-doctor-fleet" tests="${fleetReport.totalServers}" failures="${fleetReport.totalErrors}">`,
+    `<testsuites name="mcp-medic-fleet" tests="${fleetReport.totalServers}" failures="${fleetReport.totalErrors}">`,
   );
 
   for (const fileResult of fleetReport.fileResults) {

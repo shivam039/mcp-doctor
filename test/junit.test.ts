@@ -34,7 +34,7 @@ describe('JUnit XML Export Formatter', () => {
 
     const xml = formatReportJUnit(report);
     expect(xml).toContain('<?xml version="1.0" encoding="UTF-8"?>');
-    expect(xml).toContain('<testsuites name="mcp-doctor"');
+    expect(xml).toContain('<testsuites name="mcp-medic"');
     expect(xml).toContain('<testcase classname="good-server" name="connection.handshake"');
     expect(xml).toContain('<failure message="Required field missing" type="CheckError"');
     expect(xml).toContain('<system-out>[warning] Missing description</system-out>');
@@ -66,7 +66,7 @@ describe('JUnit XML Export Formatter', () => {
     };
 
     const xml = formatFleetReportJUnit(fleetReport);
-    expect(xml).toContain('<testsuites name="mcp-doctor-fleet"');
+    expect(xml).toContain('<testsuites name="mcp-medic-fleet"');
     expect(xml).toContain('testsuite name="/path/to/.mcp.json"');
   });
 });

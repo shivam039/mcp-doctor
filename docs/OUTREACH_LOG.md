@@ -18,7 +18,7 @@ Use this log to track developer interactions, diagnose message resonance, and en
 
 | Date | Platform | Target Repo / User | Error Symptom Referenced | Message Sent Summary | Response / Feedback | Outcome |
 |---|---|---|---|---|---|---|
-| *2026-09-06* | *GitHub Issue* | *example/mcp-server#42* | *Handshake timed out on stdio spawn* | *Offered standalone diagnostic via npx mcp-doctor check* | *Pending* | *Pending* |
+| *2026-09-06* | *GitHub Issue* | *example/mcp-server#42* | *Handshake timed out on stdio spawn* | *Offered standalone diagnostic via npx mcp-medic check* | *Pending* | *Pending* |
 
 ---
 

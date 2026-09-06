@@ -144,20 +144,20 @@ async function loadProtocol(): Promise<void> {
 }
 
 function printHelp(): void {
-  console.log(`
-${pc.bold('mcp-doctor')} — Diagnose broken MCP server configs before they break your agent.
+  const helpText = `
+${pc.bold('mcp-medic')} — Diagnose broken MCP server configs before they break your agent.
 
-${pc.bold('USAGE')}
-  $ mcp-doctor [check] [path/to/config.json] [options]
-  $ mcp-doctor check --registry <server-id> [options]
-  $ mcp-doctor check-all "<glob-pattern>" [options]
-  $ mcp-doctor diff <configA.json> <configB.json>
-  $ mcp-doctor watch <path/to/config.json> [options]
+USAGE
+  $ mcp-medic [check] [path/to/config.json] [options]
+  $ mcp-medic check --registry <server-id> [options]
+  $ mcp-medic check-all "<glob-pattern>" [options]
+  $ mcp-medic diff <configA.json> <configB.json>
+  $ mcp-medic watch <path/to/config.json> [options]
 
-${pc.bold('OPTIONS')}
+OPTIONS
   --config <path>       Specify path to MCP configuration file
   --registry <id/url>   Validate published registry entry directly
-  --policy <path>       Apply organizational policy rules (.mcp-doctor-policy.json)
+  --policy <path>       Apply organizational policy rules (.mcp-medic-policy.json)
   --snapshot <path>     Filter report against baseline snapshot, reporting regressions only
   --update-snapshot <p> Save diagnostic report as new baseline snapshot
   --export-junit <file> Export report in JUnit XML format
@@ -169,11 +169,12 @@ ${pc.bold('OPTIONS')}
   --timeout <ms>        Per-server handshake timeout in milliseconds (default: 5000)
   --help, -h            Show help
 
-${pc.bold('EXIT CODES')}
+EXIT CODES
   0  All checks passed cleanly
   1  Diagnostics failed (errors found, or warnings when --fail-on warning)
   2  Usage or configuration error (invalid flags, missing/malformed config)
-`);
+`;
+  console.log(helpText);
 }
 
 function colorizeHumanReport(text: string): string {
@@ -304,7 +305,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   try {
     args = parseArgs(argv);
   } catch (err) {
-    console.error(pc.red(`mcp-doctor usage error: ${err instanceof Error ? err.message : String(err)}`));
+    console.error(pc.red(`mcp-medic usage error: ${err instanceof Error ? err.message : String(err)}`));
     return 2;
   }
 
@@ -316,7 +317,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   // Handle diff command
   if (args.command === 'diff') {
     if (!args.configPath || !args.configPathB) {
-      console.error(pc.red('mcp-doctor diff requires two config paths: mcp-doctor diff <configA> <configB>'));
+      console.error(pc.red('mcp-medic diff requires two config paths: mcp-medic diff <configA> <configB>'));
       return 2;
     }
     const [resA, resB] = await Promise.all([
@@ -374,7 +375,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     if (args.json) {
       console.log(JSON.stringify(fleetReport, null, 2));
     } else {
-      console.log(pc.bold(`\nMCP Doctor Fleet Report`));
+      console.log(pc.bold(`\nMCP Medic Fleet Report`));
       console.log(`Files scanned: ${fleetReport.totalFiles} (${fleetReport.successfulFiles} valid, ${fleetReport.failedFiles} invalid)`);
       console.log(`Servers checked: ${fleetReport.totalServers}`);
       console.log(`Results: ${fleetReport.totalErrors} error(s), ${fleetReport.totalWarnings} warning(s)\n`);
@@ -479,11 +480,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
 }
 
 // Only invoke automatically when run as CLI entry point
-if (process.argv[1] && (process.argv[1].endsWith('/cli.js') || process.argv[1].endsWith('/cli.ts') || process.argv[1].endsWith('/mcp-doctor'))) {
+if (process.argv[1] && (process.argv[1].endsWith('/cli.js') || process.argv[1].endsWith('/cli.ts') || process.argv[1].endsWith('/mcp-medic') || process.argv[1].endsWith('/mcp-doctor') || process.argv[1].endsWith('/mcpmedic') || process.argv[1].endsWith('/mcpdoctor'))) {
   main()
     .then((code) => process.exit(code))
     .catch((err) => {
-      console.error(pc.red(`mcp-doctor: unexpected error: ${err instanceof Error ? err.message : String(err)}`));
+      console.error(pc.red(`mcp-medic: unexpected error: ${err instanceof Error ? err.message : String(err)}`));
       process.exit(2);
     });
 }

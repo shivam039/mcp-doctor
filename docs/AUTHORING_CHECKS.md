@@ -1,13 +1,13 @@
-# Authoring Custom Checks for mcp-doctor
+# Authoring Custom Checks for mcp-medic
 
-This guide explains how to write, test, and distribute custom check plugins for `mcp-doctor`.
+This guide explains how to write, test, and distribute custom check plugins for `mcp-medic`.
 
 ## Check Architecture
 
-Every check implements the frozen `Check` interface from `mcp-doctor`:
+Every check implements the frozen `Check` interface from `mcp-medic`:
 
 ```ts
-import type { Check, MCPConnection, DiagnosticResult } from 'mcp-doctor';
+import type { Check, MCPConnection, DiagnosticResult } from 'mcp-medic';
 
 export const noEmptyEnumCheck: Check = {
   id: 'community.no-empty-enums',
@@ -77,11 +77,11 @@ Use the built-in `runCheckConformanceSuite` helper in your test suite:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { runCheckConformanceSuite } from 'mcp-doctor';
+import { runCheckConformanceSuite } from 'mcp-medic';
 import { noEmptyEnumCheck } from './no-empty-enums.js';
 
 describe('noEmptyEnumCheck conformance', () => {
-  it('conforms strictly to mcp-doctor check interface', async () => {
+  it('conforms strictly to mcp-medic check interface', async () => {
     const result = await runCheckConformanceSuite(noEmptyEnumCheck);
     expect(result.pass).toBe(true);
     expect(result.errors).toEqual([]);
@@ -93,8 +93,8 @@ describe('noEmptyEnumCheck conformance', () => {
 
 ## Package Naming & Distribution
 
-Publish your package to npm using the `mcp-doctor-check-*` naming convention:
+Publish your package to npm using the `mcp-medic-check-*` naming convention:
 
 ```bash
-npm install -D mcp-doctor-check-strict-types
+npm install -D mcp-medic-check-strict-types
 ```

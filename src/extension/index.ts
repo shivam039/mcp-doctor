@@ -117,7 +117,7 @@ export function mapSeverity(
 }
 
 /**
- * Validates a document content using mcp-doctor core and returns VS Code diagnostics.
+ * Validates a document content using mcp-medic core and returns VS Code diagnostics.
  */
 export async function validateMCPDocument(
   document: MinimalTextDocument,
@@ -137,7 +137,7 @@ export async function validateMCPDocument(
         range: new vscode.Range(0, 0, 0, 1),
         message: `JSON syntax error in MCP config: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
         severity: vscode.DiagnosticSeverity.Error,
-        source: 'mcp-doctor',
+        source: 'mcp-medic',
         code: 'config.parse-error',
       },
     ];
@@ -149,7 +149,7 @@ export async function validateMCPDocument(
       range: new vscode.Range(0, 0, 0, 1),
       message: errMessage,
       severity: vscode.DiagnosticSeverity.Error,
-      source: 'mcp-doctor',
+      source: 'mcp-medic',
       code: 'config.invalid-schema',
     }));
   }
@@ -171,7 +171,7 @@ export async function validateMCPDocument(
       range: new vscode.Range(line, 0, line, endChar),
       message,
       severity: mapSeverity(d.severity, vscode),
-      source: 'mcp-doctor',
+      source: 'mcp-medic',
       code: d.checkId,
       suggestedFix: d.suggestedFix?.description,
     });
@@ -181,13 +181,13 @@ export async function validateMCPDocument(
 }
 
 /**
- * Activates the lightweight MCP Doctor extension.
+ * Activates the lightweight MCP Medic extension.
  */
 export function activateExtension(
   context: { subscriptions: { dispose(): void }[] },
   vscode: MinimalVSCodeAPI,
 ): { diagnosticCollection: MinimalDiagnosticCollection } {
-  const collection = vscode.languages.createDiagnosticCollection('mcp-doctor');
+  const collection = vscode.languages.createDiagnosticCollection('mcp-medic');
   context.subscriptions.push(collection);
 
   let debounceTimer: NodeJS.Timeout | undefined;
@@ -219,7 +219,7 @@ export function activateExtension(
 
         return {
           contents: [
-            `**mcp-doctor diagnostic** (Line ${line + 1})`,
+            `**mcp-medic diagnostic** (Line ${line + 1})`,
             `Inspecting: \`${currentLineText.trim()}\``,
           ],
         };
