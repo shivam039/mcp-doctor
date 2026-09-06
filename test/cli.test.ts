@@ -112,6 +112,66 @@ describe('CLI argument parsing and execution', () => {
     );
   });
 
+  it('parses the score command, implying --score', () => {
+    const args = parseArgs(['score', 'x.json']);
+    expect(args.command).toBe('score');
+    expect(args.configPath).toBe('x.json');
+    expect(args.showScore).toBe(true);
+  });
+
+  it('parses --score as a flag on the check command', () => {
+    expect(parseArgs(['check', 'x.json']).showScore).toBe(false);
+    expect(parseArgs(['check', 'x.json', '--score']).showScore).toBe(true);
+  });
+
+  it('omits the quality field in --json output when nothing connected', async () => {
+    const { writeFileSync } = await import('node:fs');
+    const configFile = join(tmpdir(), `mcp-medic-quality-unreachable-${Date.now()}.json`);
+    writeFileSync(
+      configFile,
+      JSON.stringify({ servers: [{ name: 'unreachable', transport: 'http', url: 'http://127.0.0.1:1/mcp' }] }),
+    );
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+    try {
+      await main(['check', configFile, '--json']);
+    } finally {
+      console.log = originalLog;
+      rmSync(configFile);
+    }
+    const report = JSON.parse(logs[0]);
+    expect(report.quality).toBeUndefined();
+    expect(report.summary.connected).toBe(0);
+  });
+
+  it('always includes a quality field in --json output for a connected server', async () => {
+    const { writeFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.js', import.meta.url));
+    const configFile = join(tmpdir(), `mcp-medic-quality-connected-${Date.now()}.json`);
+    writeFileSync(
+      configFile,
+      JSON.stringify({ servers: [{ name: 'fake', transport: 'stdio', command: process.execPath, args: [fixture, 'normal'] }] }),
+    );
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+    try {
+      await main(['check', configFile, '--json']);
+    } finally {
+      console.log = originalLog;
+      rmSync(configFile);
+    }
+    const report = JSON.parse(logs[0]);
+    expect(report.quality).toBeDefined();
+    expect(report.quality.overall).toBeGreaterThanOrEqual(0);
+    expect(report.quality.dimensions).toHaveProperty('protocol');
+    expect(report.quality.perServer.fake).toBeDefined();
+  });
+
   describe('--export-sarif', () => {
     const outFile = join(tmpdir(), `mcp-medic-sarif-test-${Date.now()}.sarif.json`);
     // Loopback port with nothing listening: connection refused immediately,

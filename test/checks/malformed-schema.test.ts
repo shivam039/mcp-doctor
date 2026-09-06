@@ -64,6 +64,35 @@ describe('malformedSchemaCheck (schema.malformed)', () => {
     });
   });
 
+  it('flags a top-level type other than "object" as an error (MCP spec requires tool inputSchema to describe an object)', () => {
+    const connection = {
+      server: { name: 'wrong-type-server', transport: 'stdio' },
+      status: 'connected',
+      tools: [
+        { name: 'string_type_tool', description: 'd', inputSchema: { type: 'string' } },
+      ],
+    } as unknown as MCPConnection;
+
+    const results = malformedSchemaCheck.run(connection);
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      checkId: 'schema.malformed',
+      severity: 'error',
+      toolName: 'string_type_tool',
+      message: expect.stringContaining('type "object"'),
+    });
+  });
+
+  it('does not flag a combinator schema ($ref/oneOf/anyOf/allOf) for the type check', () => {
+    const connection = {
+      server: { name: 'combinator-server', transport: 'stdio' },
+      status: 'connected',
+      tools: [{ name: 'ref_tool', description: 'd', inputSchema: { $ref: '#/definitions/Foo' } }],
+    } as unknown as MCPConnection;
+
+    expect(malformedSchemaCheck.run(connection)).toEqual([]);
+  });
+
   it('catches unexpected internal errors without throwing', () => {
     const brokenConnection = {
       server: { name: 'exploding-server', transport: 'stdio' },

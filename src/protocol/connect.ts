@@ -6,8 +6,10 @@ import type {
   MCPServerConfig,
   MCPServerInfo,
   MCPToolDefinition,
+  MCPToolAnnotations,
   MCPResourceDefinition,
   MCPPromptDefinition,
+  MCPPromptArgument,
   RunOptions,
 } from '../types.js';
 import {
@@ -108,17 +110,39 @@ function validateResponse(response: JsonRpcResponse, expectedId: number): Record
   return response.result;
 }
 
+function normalizeToolAnnotations(value: unknown): MCPToolAnnotations | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const annotations: MCPToolAnnotations = {};
+  if (typeof record.title === 'string') annotations.title = record.title;
+  if (typeof record.readOnlyHint === 'boolean') annotations.readOnlyHint = record.readOnlyHint;
+  if (typeof record.destructiveHint === 'boolean') annotations.destructiveHint = record.destructiveHint;
+  if (typeof record.idempotentHint === 'boolean') annotations.idempotentHint = record.idempotentHint;
+  if (typeof record.openWorldHint === 'boolean') annotations.openWorldHint = record.openWorldHint;
+  return annotations;
+}
+
 function normalizeTools(result: Record<string, unknown>): MCPToolDefinition[] {
   if (!Array.isArray(result.tools)) throw new Error('tools/list response has no tools array');
   return result.tools.map((tool, index) => {
     if (!tool || typeof tool !== 'object' || typeof (tool as { name?: unknown }).name !== 'string') {
       throw new Error(`tools/list returned an invalid tool at index ${index}`);
     }
-    const value = tool as { name: string; description?: unknown; inputSchema?: unknown };
+    const value = tool as {
+      name: string;
+      title?: unknown;
+      description?: unknown;
+      inputSchema?: unknown;
+      outputSchema?: unknown;
+      annotations?: unknown;
+    };
     return {
       name: value.name,
+      ...(typeof value.title === 'string' ? { title: value.title } : {}),
       ...(typeof value.description === 'string' ? { description: value.description } : {}),
       inputSchema: value.inputSchema,
+      ...(value.outputSchema !== undefined ? { outputSchema: value.outputSchema } : {}),
+      ...(normalizeToolAnnotations(value.annotations) ? { annotations: normalizeToolAnnotations(value.annotations) } : {}),
     };
   });
 }
@@ -129,14 +153,36 @@ function normalizeResources(result: Record<string, unknown>): MCPResourceDefinit
     if (!resource || typeof resource !== 'object' || typeof (resource as { uri?: unknown }).uri !== 'string') {
       throw new Error(`resources/list returned an invalid resource at index ${index}`);
     }
-    const value = resource as { uri: string; name?: unknown; description?: unknown; mimeType?: unknown };
+    const value = resource as {
+      uri: string;
+      name?: unknown;
+      title?: unknown;
+      description?: unknown;
+      mimeType?: unknown;
+      size?: unknown;
+    };
     return {
       uri: value.uri,
       ...(typeof value.name === 'string' ? { name: value.name } : {}),
+      ...(typeof value.title === 'string' ? { title: value.title } : {}),
       ...(typeof value.description === 'string' ? { description: value.description } : {}),
       ...(typeof value.mimeType === 'string' ? { mimeType: value.mimeType } : {}),
+      ...(typeof value.size === 'number' ? { size: value.size } : {}),
     };
   });
+}
+
+function normalizePromptArgument(value: unknown): MCPPromptArgument {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const record = value as Record<string, unknown>;
+  const arg: MCPPromptArgument = {};
+  if (typeof record.name === 'string') arg.name = record.name;
+  if (typeof record.title === 'string') arg.title = record.title;
+  if (typeof record.description === 'string') arg.description = record.description;
+  if (typeof record.required === 'boolean') arg.required = record.required;
+  return arg;
 }
 
 function normalizePrompts(result: Record<string, unknown>): MCPPromptDefinition[] {
@@ -145,11 +191,14 @@ function normalizePrompts(result: Record<string, unknown>): MCPPromptDefinition[
     if (!prompt || typeof prompt !== 'object' || typeof (prompt as { name?: unknown }).name !== 'string') {
       throw new Error(`prompts/list returned an invalid prompt at index ${index}`);
     }
-    const value = prompt as { name: string; description?: unknown; arguments?: unknown };
+    const value = prompt as { name: string; title?: unknown; description?: unknown; arguments?: unknown };
     return {
       name: value.name,
+      ...(typeof value.title === 'string' ? { title: value.title } : {}),
       ...(typeof value.description === 'string' ? { description: value.description } : {}),
-      ...(Array.isArray(value.arguments) ? { arguments: value.arguments } : {}),
+      ...(Array.isArray(value.arguments)
+        ? { arguments: value.arguments.map(normalizePromptArgument) }
+        : {}),
     };
   });
 }

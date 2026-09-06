@@ -94,15 +94,26 @@ export interface MCPServerInfo {
 
 export interface MCPResourceDefinition {
   uri: string;
-  name?: string;
+  name?: string;   // required per spec's BaseMetadata, but kept optional here — a missing
+                    // name is reported as a diagnostic, not a thrown parse error
+  title?: string;
   description?: string;
   mimeType?: string;
+  size?: number;
+}
+
+export interface MCPPromptArgument {
+  name?: string;   // required per spec's BaseMetadata; optional here for the same reason as above
+  title?: string;
+  description?: string;
+  required?: boolean;
 }
 
 export interface MCPPromptDefinition {
   name: string;
+  title?: string;
   description?: string;
-  arguments?: unknown[];
+  arguments?: MCPPromptArgument[];
 }
 
 export interface MCPConnection {
@@ -123,15 +134,32 @@ export interface MCPConnection {
   latencyMs?: number;
 }
 
+export interface MCPToolAnnotations { // spec's ToolAnnotations — hints, never authoritative
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
 export interface MCPToolDefinition {
   name: string;
+  title?: string;
   description?: string;
   inputSchema: unknown; // raw JSON schema as returned by the server
+  outputSchema?: unknown; // optional per spec; same shape as inputSchema
+  annotations?: MCPToolAnnotations;
 }
 
 // ---- Diagnostics ----
 
 export type Severity = 'error' | 'warning' | 'info';
+
+// Stable taxonomy; optional on DiagnosticResult so every check written before
+// this existed keeps working — see src/diagnostics.ts's inferDiagnosticCategory()
+// for the checkId-prefix fallback used when `category` is unset.
+export type DiagnosticCategory =
+  | 'protocol' | 'schema' | 'quality' | 'security' | 'reliability' | 'usability' | 'configuration';
 
 export interface SuggestedFix {
   description: string;
@@ -146,6 +174,32 @@ export interface DiagnosticResult {
   toolName?: string;        // present if the diagnostic is tool-scoped
   details?: unknown;        // structured extra info for JSON output
   suggestedFix?: SuggestedFix;
+  category?: DiagnosticCategory;
+  confidence?: 'low' | 'medium' | 'high';
+  documentationUrl?: string;
+}
+
+// ---- MCP Quality Score (src/quality-score.ts computes these; RunReport.quality holds the result) ----
+
+export type QualityDimension = 'protocol' | 'schema' | 'usability' | 'security' | 'reliability';
+
+export interface QualityDeduction {
+  dimension: QualityDimension;
+  checkId: string;
+  severity: Severity;
+  count: number;    // how many diagnostics from this checkId (at this severity) contributed
+  points: number;   // points actually deducted, after the per-checkId cap
+  description: string;
+}
+
+export interface QualityScoreBreakdown {
+  overall: number;                              // 0-100, weighted mean of `dimensions`
+  dimensions: Record<QualityDimension, number>; // each 0-100
+  deductions: QualityDeduction[];               // only points > 0, most-costly first
+}
+
+export interface ReportQualityScore extends QualityScoreBreakdown {
+  perServer: Record<string, QualityScoreBreakdown>; // a server that never connected has no entry
 }
 
 // ---- Check plugin interface ----
@@ -185,6 +239,7 @@ export interface RunReport {
     errors: number;
     warnings: number;
   };
+  quality?: ReportQualityScore; // computed by runChecks(); absent if nothing connected
 }
 
 export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunReport>;
@@ -205,6 +260,7 @@ export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunR
 | Secret redaction (headers/env/token-body values scrubbed before reaching any report, export, or diff) | **core** | `src/redact.ts` |
 | SARIF 2.1.0 export (`--export-sarif`, single-config `check`/`fix` path only — fleet/`check-all` has no SARIF formatter yet) | **core** | `src/sarif.ts` |
 | Resources/prompts capability inspection (passive `resources/list`/`prompts/list`, only when declared in `initialize`) | **Codex** | `src/protocol/connect.ts` |
+| MCP Quality Engine: tool/resource/prompt quality checks (naming, descriptions, output schema, annotations, tool-surface bloat), diagnostic category inference, and the deterministic MCP Quality Score | **core** | `src/checks/quality-*.ts`, `src/diagnostics.ts`, `src/quality-score.ts` |
 
 **Merge order:** core types → protocol layer → checks → CLI. Checks need a
 real or mocked `MCPConnection`; CLI needs checks; nobody should block on

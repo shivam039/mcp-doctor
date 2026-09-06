@@ -21,23 +21,52 @@ export interface MCPConfig {
   sourcePath?: string;
 }
 
+/** Per the MCP spec's `ToolAnnotations`: optional client *hints*, not
+ * authoritative security guarantees — a server can lie about any of these. */
+export interface MCPToolAnnotations {
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
 export interface MCPToolDefinition {
   name: string;
+  title?: string;
   description?: string;
   inputSchema: unknown;
+  /** Optional per spec; same shape as `inputSchema` when present. */
+  outputSchema?: unknown;
+  annotations?: MCPToolAnnotations;
 }
 
 export interface MCPResourceDefinition {
   uri: string;
+  /** Required by the MCP spec's `Resource` (extends `BaseMetadata`) — kept
+   * optional here because mcp-medic reports a missing name as a diagnostic
+   * rather than failing the whole `resources/list` response over it. */
   name?: string;
+  title?: string;
   description?: string;
   mimeType?: string;
+  size?: number;
+}
+
+export interface MCPPromptArgument {
+  /** Required by the MCP spec's `PromptArgument` (extends `BaseMetadata`) —
+   * kept optional here for the same reason as `MCPResourceDefinition.name`. */
+  name?: string;
+  title?: string;
+  description?: string;
+  required?: boolean;
 }
 
 export interface MCPPromptDefinition {
   name: string;
+  title?: string;
   description?: string;
-  arguments?: unknown[];
+  arguments?: MCPPromptArgument[];
 }
 
 export interface ProtocolVersionInfo {
@@ -79,6 +108,18 @@ export interface MCPConnection {
 
 export type Severity = 'error' | 'warning' | 'info';
 
+/** Stable diagnostic taxonomy. Optional and additive — existing checks that
+ * don't set this are categorized by `inferDiagnosticCategory()` (src/diagnostics.ts)
+ * from their `checkId` prefix, so nothing that already works needs to change. */
+export type DiagnosticCategory =
+  | 'protocol'
+  | 'schema'
+  | 'quality'
+  | 'security'
+  | 'reliability'
+  | 'usability'
+  | 'configuration';
+
 export interface SuggestedFix {
   description: string;
   patch?: unknown;
@@ -92,6 +133,12 @@ export interface DiagnosticResult {
   toolName?: string;
   details?: unknown;
   suggestedFix?: SuggestedFix;
+  /** Optional; see `DiagnosticCategory`. */
+  category?: DiagnosticCategory;
+  /** Optional: how confident the check is that this is a real problem (vs. a heuristic guess). */
+  confidence?: 'low' | 'medium' | 'high';
+  /** Optional: link to a doc explaining the rule this diagnostic enforces. */
+  documentationUrl?: string;
 }
 
 export interface Check {
@@ -109,6 +156,32 @@ export interface RunOptions {
   protocolVersion?: string;
 }
 
+/** The five scored dimensions of MCP quality (see src/quality-score.ts for the scoring model). */
+export type QualityDimension = 'protocol' | 'schema' | 'usability' | 'security' | 'reliability';
+
+export interface QualityDeduction {
+  dimension: QualityDimension;
+  checkId: string;
+  severity: Severity;
+  /** How many diagnostics from this checkId (at this severity) contributed. */
+  count: number;
+  /** Points actually deducted, after the per-checkId cap. */
+  points: number;
+  description: string;
+}
+
+export interface QualityScoreBreakdown {
+  overall: number;
+  dimensions: Record<QualityDimension, number>;
+  /** Only deductions with points > 0, most-costly first — every deduction here explains itself. */
+  deductions: QualityDeduction[];
+}
+
+export interface ReportQualityScore extends QualityScoreBreakdown {
+  /** Per-connected-server breakdown; a server that never connected has no entry (nothing to score). */
+  perServer: Record<string, QualityScoreBreakdown>;
+}
+
 export interface RunReport {
   configSource?: string;
   connections: MCPConnection[];
@@ -120,4 +193,7 @@ export interface RunReport {
     errors: number;
     warnings: number;
   };
+  /** Deterministic quality score derived from `diagnostics`/`connections` — see src/quality-score.ts.
+   * `undefined` when no server connected (nothing to score). */
+  quality?: ReportQualityScore;
 }
