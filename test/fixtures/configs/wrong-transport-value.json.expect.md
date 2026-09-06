@@ -1,0 +1,1 @@
+Expect: `loadConfig()` returns a config-level error such as `server[0] ("bad-transport"): invalid transport 'websocket' (expected 'stdio', 'sse', or 'http')` and the CLI exits 1 before attempting any connection.

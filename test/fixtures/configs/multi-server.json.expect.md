@@ -1,0 +1,1 @@
+Expect: `loadConfig()` passes with zero errors; the orchestrator loops over all 3 servers (stdio, sse, http) independently, and one server's connection failure must not prevent the other two from being attempted and reported in `connections`.

@@ -1,0 +1,9 @@
+{
+  "servers": [
+    {
+      "name": "bad-transport",
+      "transport": "websocket",
+      "url": "ws://localhost:9000"
+    }
+  ]
+}
