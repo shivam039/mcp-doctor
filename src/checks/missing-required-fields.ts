@@ -41,6 +41,9 @@ export const missingRequiredFieldsCheck: Check = {
                 required: schemaObj.required,
                 definedProperties: Object.keys(properties),
               },
+              suggestedFix: {
+                description: `Define property "${reqField}" under inputSchema.properties, or remove "${reqField}" from inputSchema.required.`,
+              },
             });
           }
         }

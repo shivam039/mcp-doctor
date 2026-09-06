@@ -74,8 +74,12 @@ work today (reporting a clear "protocol layer not yet implemented"
 per-server error) and pick up the real implementations automatically, with
 zero CLI changes required, the moment Codex/Jules land their `index.ts`
 files exporting `connect`/`registerProtocol` and `allChecks` respectively.
-Once `src/checks/index.ts` lands, uncomment the static re-export in
-`src/index.ts` — the dynamic-import path in `cli.ts` can stay either way,
-but switching it to a static import at that point is a fine cleanup, not
-required.
+## 2026-09-06 — [all] Phase 2 enhancements: Suggested fixes, Discovery, Watch, Exit codes
+Decision: Extend `DiagnosticResult` with optional `suggestedFix: { description: string; patch?: unknown }`,
+add `--show-fixes` CLI flag, implement multi-location config auto-discovery and debounced watch mode,
+harden SSE/HTTP transports with token refresh and `--verbose` JSON-RPC logging, formalize exit codes
+(0 clean, 1 errors/failures, 2 usage/config errors), and export community check conformance helper.
+Reason: Brings mcp-doctor to production-grade usability and CI readiness while maintaining zero
+heavy runtime dependencies.
+
 

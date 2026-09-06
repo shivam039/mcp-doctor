@@ -39,6 +39,8 @@ export interface MCPServerConfig {
   // sse / http
   url?: string;
   headers?: Record<string, string>;
+  tokenRefreshUrl?: string;
+  tokenRefreshBody?: Record<string, unknown>;
 }
 
 export interface MCPConfig {
@@ -71,6 +73,11 @@ export interface MCPToolDefinition {
 
 export type Severity = 'error' | 'warning' | 'info';
 
+export interface SuggestedFix {
+  description: string;
+  patch?: unknown;
+}
+
 export interface DiagnosticResult {
   checkId: string;        // e.g. "schema.required-fields"
   severity: Severity;
@@ -78,6 +85,7 @@ export interface DiagnosticResult {
   serverName: string;
   toolName?: string;        // present if the diagnostic is tool-scoped
   details?: unknown;        // structured extra info for JSON output
+  suggestedFix?: SuggestedFix;
 }
 
 // ---- Check plugin interface ----
@@ -99,6 +107,8 @@ export interface Check {
 export interface RunOptions {
   timeoutMs?: number;       // per-server handshake timeout, default 5000
   checks?: Check[];         // defaults to all registered built-in checks
+  verbose?: boolean;
+  onLog?: (message: string) => void;
 }
 
 export interface RunReport {

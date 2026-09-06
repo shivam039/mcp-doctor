@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import type { MCPConnection, MCPServerConfig, MCPToolDefinition } from '../types.js';
+import type { MCPConnection, MCPServerConfig, MCPToolDefinition, RunOptions } from '../types.js';
 
 const PROTOCOL_VERSION = '2024-11-05';
 const CLIENT_INFO = { name: 'mcp-doctor', version: '0.0.1' };
@@ -19,6 +19,14 @@ interface Transport {
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function logVerbose(options: RunOptions | undefined, message: string): void {
+  if (options?.onLog) {
+    options.onLog(message);
+  } else if (options?.verbose) {
+    console.error(`[debug] ${message}`);
+  }
 }
 
 function failed(
@@ -75,24 +83,67 @@ function normalizeTools(result: Record<string, unknown>): MCPToolDefinition[] {
   });
 }
 
+async function refreshTokenIfNeeded(
+  config: MCPServerConfig,
+  options?: RunOptions,
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { ...(config.headers ?? {}) };
+  if (!config.tokenRefreshUrl) {
+    return headers;
+  }
+
+  try {
+    logVerbose(options, `Refreshing OAuth token from ${config.tokenRefreshUrl}...`);
+    const res = await fetch(config.tokenRefreshUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(config.headers ?? {}) },
+      body: JSON.stringify(config.tokenRefreshBody ?? {}),
+    });
+    if (!res.ok) {
+      throw new Error(`Token refresh failed with status ${res.status}`);
+    }
+    const data = (await res.json()) as Record<string, unknown>;
+    const token =
+      (typeof data.access_token === 'string' && data.access_token) ||
+      (typeof data.token === 'string' && data.token);
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+      logVerbose(options, 'Token refreshed successfully');
+    }
+  } catch (err) {
+    logVerbose(options, `Token refresh warning: ${messageOf(err)}`);
+  }
+  return headers;
+}
+
 class StdioTransport implements Transport {
   private readonly process: ChildProcessWithoutNullStreams;
   private nextId = 1;
-  private readonly pending = new Map<number, { resolve: (response: JsonRpcResponse) => void; reject: (error: Error) => void }>();
+  private readonly pending = new Map<
+    number,
+    { resolve: (response: JsonRpcResponse) => void; reject: (error: Error) => void }
+  >();
   private buffer = '';
   private closed = false;
   private readonly exitError: Promise<never>;
 
-  constructor(config: MCPServerConfig) {
+  constructor(config: MCPServerConfig, private readonly options?: RunOptions) {
     if (!config.command) throw new Error('stdio transport requires command');
     this.process = spawn(config.command, config.args ?? [], {
       env: { ...process.env, ...(config.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.exitError = new Promise((_, reject) => {
-      this.process.once('error', (error) => reject(new Error(`failed to start MCP server: ${error.message}`)));
+      this.process.once('error', (error) =>
+        reject(new Error(`failed to start MCP server: ${error.message}`)),
+      );
       this.process.once('exit', (code, signal) => {
-        if (!this.closed) reject(new Error(`MCP server exited before responding (code=${code ?? 'unknown'}, signal=${signal ?? 'none'})`));
+        if (!this.closed)
+          reject(
+            new Error(
+              `MCP server exited before responding (code=${code ?? 'unknown'}, signal=${signal ?? 'none'})`,
+            ),
+          );
       });
     });
     this.process.stdout.setEncoding('utf8');
@@ -108,6 +159,7 @@ class StdioTransport implements Transport {
       newline = this.buffer.indexOf('\n');
       if (!line) continue;
       try {
+        logVerbose(this.options, `<-- stdio: ${line}`);
         const parsed = JSON.parse(line) as JsonRpcResponse;
         if (typeof parsed.id === 'number') {
           const waiter = this.pending.get(parsed.id);
@@ -124,7 +176,10 @@ class StdioTransport implements Transport {
 
   request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
     const id = this.nextId++;
-    const payload = JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) }) + '\n';
+    const payload =
+      JSON.stringify({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) }) +
+      '\n';
+    logVerbose(this.options, `--> stdio: ${payload.trim()}`);
     return Promise.race([
       new Promise<JsonRpcResponse>((resolve, reject) => {
         this.pending.set(id, { resolve, reject });
@@ -141,14 +196,18 @@ class StdioTransport implements Transport {
 
   notify(method: string, params?: Record<string, unknown>): Promise<void> {
     return new Promise((resolve, reject) => {
-      const payload = JSON.stringify({ jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) }) + '\n';
+      const payload =
+        JSON.stringify({ jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) }) +
+        '\n';
+      logVerbose(this.options, `--> stdio (notify): ${payload.trim()}`);
       this.process.stdin.write(payload, (error) => (error ? reject(error) : resolve()));
     });
   }
 
   async close(): Promise<void> {
     this.closed = true;
-    for (const waiter of this.pending.values()) waiter.reject(new Error('MCP server connection closed'));
+    for (const waiter of this.pending.values())
+      waiter.reject(new Error('MCP server connection closed'));
     this.pending.clear();
     if (!this.process.killed) {
       this.process.kill();
@@ -161,111 +220,229 @@ async function httpJson(
   url: string,
   headers: Record<string, string>,
   body: unknown,
+  options?: RunOptions,
 ): Promise<JsonRpcResponse> {
+  const bodyText = JSON.stringify(body);
+  logVerbose(options, `--> HTTP POST ${url}: ${bodyText}`);
   const response = await fetch(url, {
     method: 'POST',
-    headers: { Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
+    headers: {
+      Accept: 'application/json, text/event-stream',
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: bodyText,
   });
   if (!response.ok) throw new Error(`MCP HTTP request failed with status ${response.status}`);
   const text = await response.text();
-  const data = text.trim().startsWith('data:') ? text.split(/\r?\n/).find((line) => line.startsWith('data:'))?.slice(5).trim() : text;
+  logVerbose(options, `<-- HTTP ${response.status}: ${text}`);
+  const data = text.trim().startsWith('data:')
+    ? text
+        .split(/\r?\n/)
+        .find((line) => line.startsWith('data:'))
+        ?.slice(5)
+        .trim()
+    : text;
   if (!data) throw new Error('MCP HTTP response was empty');
   return JSON.parse(data) as JsonRpcResponse;
 }
 
 class HttpTransport implements Transport {
   private nextId = 1;
-  constructor(private readonly config: MCPServerConfig) {
+  private headers: Record<string, string> = {};
+
+  constructor(
+    private readonly config: MCPServerConfig,
+    private readonly options?: RunOptions,
+  ) {
     if (!config.url) throw new Error(`${config.transport} transport requires url`);
   }
+
+  private async getHeaders(): Promise<Record<string, string>> {
+    if (Object.keys(this.headers).length === 0) {
+      this.headers = await refreshTokenIfNeeded(this.config, this.options);
+    }
+    return this.headers;
+  }
+
   async request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
     const id = this.nextId++;
-    return httpJson(this.config.url!, this.config.headers ?? {}, { jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) });
+    const headers = await this.getHeaders();
+    return httpJson(
+      this.config.url!,
+      headers,
+      { jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) },
+      this.options,
+    );
   }
+
   async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+    const headers = await this.getHeaders();
+    const bodyText = JSON.stringify({
+      jsonrpc: '2.0',
+      method,
+      ...(params === undefined ? {} : { params }),
+    });
+    logVerbose(this.options, `--> HTTP POST (notify) ${this.config.url!}: ${bodyText}`);
     const response = await fetch(this.config.url!, {
       method: 'POST',
-      headers: { Accept: 'application/json, text/event-stream', 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
-      body: JSON.stringify({ jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) }),
+      headers: {
+        Accept: 'application/json, text/event-stream',
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body: bodyText,
     });
-    if (!response.ok) throw new Error(`MCP HTTP notification failed with status ${response.status}`);
+    if (!response.ok)
+      throw new Error(`MCP HTTP notification failed with status ${response.status}`);
   }
+
   async close(): Promise<void> {}
 }
 
 class SseTransport implements Transport {
   private nextId = 1;
   private endpointPromise: Promise<string> | undefined;
+  private headers: Record<string, string> = {};
 
-  constructor(private readonly config: MCPServerConfig) {
+  constructor(
+    private readonly config: MCPServerConfig,
+    private readonly options?: RunOptions,
+  ) {
     if (!config.url) throw new Error('sse transport requires url');
+  }
+
+  private async getHeaders(): Promise<Record<string, string>> {
+    if (Object.keys(this.headers).length === 0) {
+      this.headers = await refreshTokenIfNeeded(this.config, this.options);
+    }
+    return this.headers;
+  }
+
+  private async endpointWithRetry(maxRetries = 2): Promise<string> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.fetchEndpoint();
+      } catch (err) {
+        lastError = err;
+        logVerbose(this.options, `SSE connection attempt ${attempt} failed: ${messageOf(err)}`);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 100 * attempt));
+        }
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  }
+
+  private async fetchEndpoint(): Promise<string> {
+    const headers = await this.getHeaders();
+    logVerbose(this.options, `--> SSE connecting to ${this.config.url}...`);
+    const response = await fetch(this.config.url!, {
+      headers: { Accept: 'text/event-stream', ...headers },
+    });
+    if (!response.ok || !response.body)
+      throw new Error(`MCP SSE connection failed with status ${response.status}`);
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        logVerbose(this.options, `<-- SSE stream chunk: ${buffer}`);
+        const event = buffer.match(/(?:^|\r?\n)\r?\n([\s\S]*?)(?:\r?\n\r?\n|$)/);
+        if (!event) continue;
+        buffer = buffer.slice((event.index ?? 0) + event[0].length);
+        const data = event[1]
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('\n');
+        if (data) {
+          const endpointUrl = new URL(data, this.config.url!).toString();
+          logVerbose(this.options, `SSE discovered endpoint: ${endpointUrl}`);
+          return endpointUrl;
+        }
+      }
+    } finally {
+      await reader.cancel();
+    }
+    throw new Error('MCP SSE stream ended before endpoint event');
   }
 
   private async endpoint(): Promise<string> {
     if (!this.endpointPromise) {
-      this.endpointPromise = (async () => {
-        const response = await fetch(this.config.url!, { headers: { Accept: 'text/event-stream', ...(this.config.headers ?? {}) } });
-        if (!response.ok || !response.body) throw new Error(`MCP SSE connection failed with status ${response.status}`);
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        try {
-          while (true) {
-            const chunk = await reader.read();
-            if (chunk.done) break;
-            buffer += decoder.decode(chunk.value, { stream: true });
-            const event = buffer.match(/(?:^|\r?\n)\r?\n([\s\S]*?)(?:\r?\n\r?\n|$)/);
-            if (!event) continue;
-            buffer = buffer.slice((event.index ?? 0) + event[0].length);
-            const data = event[1].split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
-            if (data) return new URL(data, this.config.url!).toString();
-          }
-        } finally {
-          await reader.cancel();
-        }
-        throw new Error('MCP SSE stream ended before endpoint event');
-      })();
+      this.endpointPromise = this.endpointWithRetry();
     }
     return this.endpointPromise;
   }
 
   async request(method: string, params?: Record<string, unknown>): Promise<JsonRpcResponse> {
     const id = this.nextId++;
-    return httpJson(await this.endpoint(), this.config.headers ?? {}, { jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) });
+    const headers = await this.getHeaders();
+    const targetEndpoint = await this.endpoint();
+    return httpJson(
+      targetEndpoint,
+      headers,
+      { jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) },
+      this.options,
+    );
   }
 
   async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+    const headers = await this.getHeaders();
     const endpoint = await this.endpoint();
+    const bodyText = JSON.stringify({
+      jsonrpc: '2.0',
+      method,
+      ...(params === undefined ? {} : { params }),
+    });
+    logVerbose(this.options, `--> SSE POST (notify) ${endpoint}: ${bodyText}`);
     const response = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(this.config.headers ?? {}) },
-      body: JSON.stringify({ jsonrpc: '2.0', method, ...(params === undefined ? {} : { params }) }),
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: bodyText,
     });
-    if (!response.ok) throw new Error(`MCP SSE notification failed with status ${response.status}`);
+    if (!response.ok)
+      throw new Error(`MCP SSE notification failed with status ${response.status}`);
   }
 
   async close(): Promise<void> {}
 }
 
-export async function connect(config: MCPServerConfig, timeoutMs: number): Promise<MCPConnection> {
+export async function connect(
+  config: MCPServerConfig,
+  timeoutMs: number,
+  options?: RunOptions,
+): Promise<MCPConnection> {
   const started = Date.now();
   let transport: Transport | undefined;
   try {
     if (config.transport === 'stdio') {
       try {
-        transport = new StdioTransport(config);
+        transport = new StdioTransport(config, options);
       } catch (error) {
         return failed(config, 'failed', 'spawn', messageOf(error), error);
       }
     } else if (config.transport === 'sse' || config.transport === 'http') {
       try {
-        transport = config.transport === 'sse' ? new SseTransport(config) : new HttpTransport(config);
+        transport =
+          config.transport === 'sse'
+            ? new SseTransport(config, options)
+            : new HttpTransport(config, options);
       } catch (error) {
         return failed(config, 'failed', 'spawn', messageOf(error), error);
       }
     } else {
-      return failed(config, 'failed', 'spawn', `unsupported transport: ${String(config.transport)}`);
+      return failed(
+        config,
+        'failed',
+        'spawn',
+        `unsupported transport: ${String(config.transport)}`,
+      );
     }
 
     let initialize: Record<string, unknown>;
@@ -286,17 +463,38 @@ export async function connect(config: MCPServerConfig, timeoutMs: number): Promi
     } catch (error) {
       const timedOut = messageOf(error).includes('timed out');
       const message = messageOf(error);
-      return failed(config, timedOut ? 'timeout' : 'failed', message.startsWith('failed to start') ? 'spawn' : 'handshake', message, error);
+      return failed(
+        config,
+        timedOut ? 'timeout' : 'failed',
+        message.startsWith('failed to start') ? 'spawn' : 'handshake',
+        message,
+        error,
+      );
     }
 
     try {
-      await withTimeout(transport.notify('notifications/initialized'), timeoutMs, 'initialized notification');
+      await withTimeout(
+        transport.notify('notifications/initialized'),
+        timeoutMs,
+        'initialized notification',
+      );
     } catch (error) {
-      return failed(config, messageOf(error).includes('timed out') ? 'timeout' : 'failed', 'capability-negotiation', messageOf(error), error);
+      return failed(
+        config,
+        messageOf(error).includes('timed out') ? 'timeout' : 'failed',
+        'capability-negotiation',
+        messageOf(error),
+        error,
+      );
     }
 
     try {
-      const tools = normalizeTools(validateResponse(await withTimeout(transport.request('tools/list'), timeoutMs, 'tools/list'), 2));
+      const tools = normalizeTools(
+        validateResponse(
+          await withTimeout(transport.request('tools/list'), timeoutMs, 'tools/list'),
+          2,
+        ),
+      );
       return {
         server: config,
         status: 'connected',
@@ -305,7 +503,13 @@ export async function connect(config: MCPServerConfig, timeoutMs: number): Promi
         latencyMs: Date.now() - started,
       };
     } catch (error) {
-      return failed(config, messageOf(error).includes('timed out') ? 'timeout' : 'failed', 'list-tools', messageOf(error), error);
+      return failed(
+        config,
+        messageOf(error).includes('timed out') ? 'timeout' : 'failed',
+        'list-tools',
+        messageOf(error),
+        error,
+      );
     }
   } catch (error) {
     return failed(config, 'failed', 'handshake', messageOf(error), error);

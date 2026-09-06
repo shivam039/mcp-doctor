@@ -1,0 +1,57 @@
+name: 'mcp-doctor-action'
+description: 'Diagnose broken MCP (Model Context Protocol) server configs in CI before they break your agent silently'
+author: 'mcp-doctor'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  config-path:
+    description: 'Path to MCP configuration file (defaults to auto-discovery)'
+    required: false
+    default: ''
+  fail-on:
+    description: 'Failure threshold: "error" (default) or "warning"'
+    required: false
+    default: 'error'
+  show-fixes:
+    description: 'Display actionable fix suggestions under diagnostics'
+    required: false
+    default: 'true'
+  timeout:
+    description: 'Handshake timeout per server in milliseconds'
+    required: false
+    default: '5000'
+  verbose:
+    description: 'Output raw JSON-RPC traffic for debugging'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run mcp-doctor
+      shell: bash
+      run: |
+        ARGS="check"
+        if [ -n "${{ inputs.config-path }}" ]; then
+          ARGS="$ARGS ${{ inputs.config-path }}"
+        fi
+        if [ "${{ inputs.show-fixes }}" = "true" ]; then
+          ARGS="$ARGS --show-fixes"
+        fi
+        if [ -n "${{ inputs.fail-on }}" ]; then
+          ARGS="$ARGS --fail-on ${{ inputs.fail-on }}"
+        fi
+        if [ -n "${{ inputs.timeout }}" ]; then
+          ARGS="$ARGS --timeout ${{ inputs.timeout }}"
+        fi
+        if [ "${{ inputs.verbose }}" = "true" ]; then
+          ARGS="$ARGS --verbose"
+        fi
+        npx --yes mcp-doctor $ARGS

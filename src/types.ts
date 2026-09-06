@@ -12,6 +12,8 @@ export interface MCPServerConfig {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  tokenRefreshUrl?: string;
+  tokenRefreshBody?: Record<string, unknown>;
 }
 
 export interface MCPConfig {
@@ -40,6 +42,11 @@ export interface MCPConnection {
 
 export type Severity = 'error' | 'warning' | 'info';
 
+export interface SuggestedFix {
+  description: string;
+  patch?: unknown;
+}
+
 export interface DiagnosticResult {
   checkId: string;
   severity: Severity;
@@ -47,6 +54,7 @@ export interface DiagnosticResult {
   serverName: string;
   toolName?: string;
   details?: unknown;
+  suggestedFix?: SuggestedFix;
 }
 
 export interface Check {
@@ -58,6 +66,8 @@ export interface Check {
 export interface RunOptions {
   timeoutMs?: number;
   checks?: Check[];
+  verbose?: boolean;
+  onLog?: (message: string) => void;
 }
 
 export interface RunReport {
