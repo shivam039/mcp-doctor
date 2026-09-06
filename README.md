@@ -46,6 +46,8 @@ This is the whole point (a real handshake, not a schema guess) — but it means 
 
 ## Quick Start
 
+> **Preferred invocation**: Run `npx mcp-medic` (the npm package is `mcp-medic`, not `mcp-doctor`).
+
 ```bash
 # Run against auto-discovered configs in current project / Claude Desktop
 npx mcp-medic
@@ -198,6 +200,7 @@ The `security.*` checks are heuristic — they pattern-match on what a server *d
 - **`security.*` checks are heuristic pattern-matching**, not a security audit — see the note above. They can both miss real issues and flag benign configs (e.g. a legitimate local dev server on plain `http://`).
 - **Fleet commands (`check-all`, `diff`) are newer and less battle-tested** than `check`/`watch` — the core check pipeline they're built on is the same, but edge cases in glob matching or drift diffing are more likely.
 - **The VS Code extension and community check packages are not shipped/published** — see the sections above.
+- **npm README sync**: Latest docs live on GitHub main; npm README updates on the next publish.
 - **First run via `npx`** pays a one-time cost to resolve and download the package; once installed (or on a warm npx cache), `--help`/`--version` return in well under 100ms.
 
 ---
@@ -207,6 +210,11 @@ The `security.*` checks are heuristic — they pattern-match on what a server *d
 - 🐛 [Report a bug](https://github.com/shivam039/mcp-doctor/issues/new?template=bug_report.md) / 💡 [Request a feature](https://github.com/shivam039/mcp-doctor/issues/new?template=feature_request.md)
 - 📋 See [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a PR
 - 📝 [CHANGELOG](./CHANGELOG.md)
+
+> [!NOTE]
+> **Repository Metadata (GitHub Settings)**: The GitHub repository About description and topics must be configured directly in repository settings (cannot be set from repository files):
+> - **Description**: `Diagnose broken MCP server configs before they break your agent. npm: mcp-medic`
+> - **Topics**: `mcp`, `model-context-protocol`, `cli`, `diagnostics`, `linter`, `claude`, `vscode`, `security`, `ci`
 
 ## Governance, Stability & Security
 

@@ -40,4 +40,22 @@ code --install-extension mcp-medic-vscode-0.0.1.vsix
 - No real network/protocol handshake is performed from the editor for `sse`/`http` servers within the timeout used here (3s) — a slow or unreachable server will just show a connection-failure diagnostic, same as the CLI.
 - No settings/configuration UI (timeout, which checks run, etc.) — it always runs every built-in check.
 
+## Blockers to Marketplace Publish
+
+This extension is currently an experimental preview for testing from source. The following blockers must be resolved before publishing to the Visual Studio Marketplace:
+
+1. **Self-Contained Diagnostics**: Currently, `src/extension.ts` dynamically resolves the parent monorepo's build output (`../../dist/extension/index.js`). The packaged extension must be self-contained and not depend on parent directory paths.
+2. **Marketplace Metadata & Assets**: Requires a registered publisher ID, 128x128 icon, verified `engines.vscode` compatibility range, and marketplace documentation.
+3. **Standalone Installation**: A packaged `.vsix` must install and run cleanly on a clean machine without the monorepo repository present.
+
+## Path to Marketplace Checklist
+
+When preparing the extension for official release:
+
+- [ ] **Bundle Diagnostics**: Bundle the diagnostics library via `esbuild`/`tsup`, depend on the published `mcp-medic` package, or vendor the diagnostics module into `vscode-extension/src/`.
+- [ ] **Configure Metadata**: Update `vscode-extension/package.json` with production `publisher`, `icon`, `repository`, and `categories`.
+- [ ] **Package VSIX**: Run `npx @vscode/vsce package` to generate the standalone `.vsix`.
+- [ ] **Clean-Machine Test**: Verify local installation (`code --install-extension <file>.vsix`) in an isolated environment without the repository source.
+- [ ] **Publish**: Execute `npx @vscode/vsce publish` with a Visual Studio Marketplace publisher token.
+
 If you hit something confusing, please open an issue (see the repo's [CONTRIBUTING.md](../CONTRIBUTING.md)) rather than assuming it's expected — the goal is to eventually publish a properly maintained version of this extension.
