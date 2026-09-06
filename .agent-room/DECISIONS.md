@@ -82,4 +82,36 @@ harden SSE/HTTP transports with token refresh and `--verbose` JSON-RPC logging, 
 Reason: Brings mcp-doctor to production-grade usability and CI readiness while maintaining zero
 heavy runtime dependencies.
 
+## 2026-09-06 — [antigravity] Phase 3: `mcp-doctor fix` + security.* checks
+Decision: Add an interactive `mcp-doctor fix <path>` command (`src/cli.ts` + new
+`src/fix.ts`) and three heuristic checks — `security.untrusted-remote`,
+`security.overbroad-permissions`, `security.prompt-injection-risk` — in
+`src/checks/security-*.ts`. `fix` only ever acts on diagnostics whose
+`suggestedFix.patch` matches the `ConfigPatch` shape defined in `src/fix.ts`
+(`{ serverName, set }`, a shallow field merge into that server's raw JSON) —
+of the 8 built-in checks, today only `security.untrusted-remote`'s
+non-https diagnostic produces one (upgrading `http://` to `https://`); every
+other diagnostic (schema.*, the IP-literal-host and overbroad/injection
+security diagnostics) is about server-declared data mcp-doctor doesn't own
+and stays description-only, by design — there is no safe mechanical fix for
+"this third-party server's tool description is suspicious." Per each fix:
+diff shown, explicit y/n prompt (never bulk-applied), `<path>.bak` written
+before the first write, `--dry-run` shows every diff and prompts/writes
+nothing, `--check <id>` filters to one check. Idempotency (FR3-1.4) is
+enforced two ways: `security.untrusted-remote` itself stops flagging a
+server once its patch is applied (unit-tested against mock connections),
+and `diffConfigPatch()` returns `[]` (nothing to show or confirm) if a
+patch's fields already match, so re-running `fix` against an already-fixed
+config is a safe no-op even if a stale diagnostic somehow still named it.
+Reason: this was requested directly by the human this session, spanning
+what CONTRACT.md's original module-boundary table split between
+"Antigravity" (CLI) and "Jules" (checks). Since a fixable check and the
+patch shape `fix` understands are two halves of one feature, and no other
+session was concurrently working `src/checks/*` at the time, implementing
+both together in one session avoided a shape mismatch between what a check
+promises and what `fix` can apply. Module boundaries table updated in the
+same commit per CONTRACT.md's own rule.
+Supersedes: CONTRACT.md's "Not in v1: auto-fix" line — Phase 3 explicitly
+adds it; see the new "Scope of Phase 3" section.
+
 
