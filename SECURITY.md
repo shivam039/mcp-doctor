@@ -26,4 +26,17 @@
 
 ## Reporting Vulnerabilities
 
-If you discover a security vulnerability within `mcp-medic`, please report it privately via GitHub Security Advisories or by emailing security contact before public disclosure. We will respond within 48 hours.
+If you discover a security vulnerability within `mcp-medic`, please report it privately rather than opening a public issue:
+
+- **Preferred**: open a [private GitHub Security Advisory](https://github.com/shivam039/mcp-doctor/security/advisories/new) on this repository. This notifies the maintainer directly and keeps the report confidential until a fix ships.
+- Do not include exploit details in a public issue, PR, or discussion before a fix is released.
+
+We aim to acknowledge new reports within 48 hours.
+
+## Before you report: what "executing MCP servers" means
+
+`mcp-medic` validates a config by actually connecting to the servers it describes — this is expected, documented behavior, not a bug:
+- For `stdio` transport, it **spawns the configured `command`** as a child process on your machine.
+- For `sse`/`http` transport, it **makes real network requests** to the configured `url`, including any `headers` you've set (e.g. auth tokens).
+
+Only run `mcp-medic` against configs you trust, the same way you'd only run `npm install` against a `package.json` you trust — a malicious `command`/`url` in a config file will execute/connect exactly as configured. This is inherent to what the tool does (verifying a real handshake), not something a flag can disable.

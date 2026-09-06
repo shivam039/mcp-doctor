@@ -1,6 +1,6 @@
-# 1.0 API Stability & Deprecation Policy
+# v1.0 — Initial Stable Surface & Deprecation Policy
 
-`mcp-medic` follows [Semantic Versioning 2.0.0](https://semver.org/).
+`mcp-medic` follows [Semantic Versioning 2.0.0](https://semver.org/). This is a young project (first stable release), so treat "frozen" below as intent, not a battle-tested guarantee — if a real bug forces a surface change before enough real-world usage has validated it, that will be called out clearly in the changelog, not silently.
 
 ---
 
@@ -18,9 +18,11 @@ The following core interfaces and contracts are frozen:
    - `loadConfig(rawJson: unknown, sourcePath?: string): ConfigLoadResult`
 
 3. **CLI Commands & Flags**:
-   - `check [configPath]`, `watch <configPath>`
+   - `check [configPath]`, `watch <configPath>`, `fix <configPath>`, `--help`/`-h`, `--version`/`-V`
    - `--config`, `--registry`, `--show-fixes`, `--fail-on`, `--verbose`, `--json`, `--timeout`
    - Exit code taxonomy: `0` (clean), `1` (diagnostic failure), `2` (usage/config error).
+
+**Not yet frozen** (still marked experimental — see the README's Known Limitations): the `check-all` and `diff` fleet commands, `--policy`/`--snapshot`/`--export-junit`/`--export-json` and the flags specific to them. These may still see shape changes based on early feedback.
 
 ---
 

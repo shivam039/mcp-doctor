@@ -20,7 +20,7 @@ Built-in checks ship enabled by default for all users. Because false positives b
 Substantial additions to `mcp-medic` core, type interfaces, or CLI command structure follow the public RFC process:
 - Open an RFC issue using [docs/RFC_TEMPLATE.md](./docs/RFC_TEMPLATE.md).
 - Follow the process detailed in [docs/RFC_PROCESS.md](./docs/RFC_PROCESS.md).
-- Solicit review and approval from at least two core maintainers before merging.
+- Solicit review and approval from the project's maintainer(s) before merging — today that's a single maintainer; this will require at least two once the maintainer group grows.
 
 ---
 
