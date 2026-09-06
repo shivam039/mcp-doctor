@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live-fleet": "node dist/cli.js check test/integration/fixtures/live-fleet/mcp-live-fleet.json --timeout 15000",
     "release": "node scripts/auto-release.js"
   },
   "keywords": [
