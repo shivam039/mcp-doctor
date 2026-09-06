@@ -95,7 +95,7 @@ export async function runChecks(
     diagnostics,
     summary,
   };
-  const quality = computeReportQualityScore(report);
+  const quality = computeReportQualityScore(report, checks);
   if (quality) {
     report.quality = quality;
   }

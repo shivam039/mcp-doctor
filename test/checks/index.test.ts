@@ -16,11 +16,12 @@ import {
   qualityToolSurfaceCheck,
   qualityResourcesCheck,
   qualityPromptsCheck,
+  protocolConnectionHealthCheck,
 } from '../../src/checks/index.js';
 
 describe('checks index', () => {
-  it('exports all 15 checks in allChecks', () => {
-    expect(allChecks).toHaveLength(15);
+  it('exports all 16 checks in allChecks', () => {
+    expect(allChecks).toHaveLength(16);
     expect(allChecks).toContain(malformedSchemaCheck);
     expect(allChecks).toContain(missingRequiredFieldsCheck);
     expect(allChecks).toContain(typeMismatchCheck);
@@ -36,11 +37,13 @@ describe('checks index', () => {
     expect(allChecks).toContain(qualityToolSurfaceCheck);
     expect(allChecks).toContain(qualityResourcesCheck);
     expect(allChecks).toContain(qualityPromptsCheck);
+    expect(allChecks).toContain(protocolConnectionHealthCheck);
   });
 
   it('has valid check IDs for each check', () => {
     const ids = allChecks.map((c) => c.id);
     expect(ids).toEqual([
+      'protocol.connection-health',
       'schema.malformed',
       'schema.missing-required',
       'schema.type-mismatch',

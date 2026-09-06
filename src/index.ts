@@ -36,7 +36,15 @@ export { inferDiagnosticCategory, categoryOf } from './diagnostics.js';
 export {
   computeConnectionQualityScore,
   computeReportQualityScore,
+  computeQualityCoverage,
+  checkMinimumScorePolicy,
   QUALITY_DIMENSIONS,
   QUALITY_DIMENSION_WEIGHTS,
+  QUALITY_SCORE_DISCLAIMER,
 } from './quality-score.js';
+export { getProtocolQualityRules } from './protocol/quality-rules.js';
+export type { ProtocolQualityRules, ToolNameProtocolRules } from './protocol/quality-rules.js';
+export { protocolConnectionHealthCheck } from './checks/protocol-connection-health.js';
+export { evaluateToolName } from './checks/quality-tool-names.js';
+export type { ToolNameFinding } from './checks/quality-tool-names.js';
 export * from './types.js';

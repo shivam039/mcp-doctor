@@ -50,6 +50,8 @@ This is the whole point (a real handshake, not a schema guess) — but it means 
 
 `mcp-medic` computes a deterministic **MCP Quality Score** (0–100) from the same diagnostics shown in the report — there's no separate, opaque scoring model guessing independently. Every point deducted traces back to one or more real diagnostics, and the same input always produces the same score (no LLM, no randomness, no extra network calls beyond the MCP inspection already performed).
 
+**What the score means — and doesn't**: it's a measurement of what mcp-medic's passive checks actually found (or looked for), not a certification. "Security 93/100" means *mcp-medic's heuristic security checks found issues worth 7 points* — it is not a security audit, and a 100 is not a guarantee the server is safe. Every report includes this disclaimer and a coverage figure so you can tell what was actually inspected (see below).
+
 ```bash
 mcp-medic score path/to/config.json
 # or, alongside the normal report:
@@ -60,15 +62,27 @@ mcp-medic check path/to/config.json --score
 
 | Dimension | Weight | What it reflects |
 |---|---|---|
-| Protocol | 25% | Version negotiation compatibility, capability-inspection health (`resources/list`/`prompts/list` succeeding), `serverInfo` presence |
+| Protocol | 25% | Version negotiation compatibility, capability-inspection health (`resources/list`/`prompts/list` succeeding), `serverInfo` presence, version downgrades |
 | Schema | 20% | `schema.*` diagnostics — malformed/missing input schemas, type mismatches, missing required fields |
 | Agent usability | 20% | Tool/resource/prompt naming, description quality, output schemas, annotations, tool-surface bloat |
 | Security | 20% | `security.*` heuristic diagnostics (untrusted remotes, overbroad permissions, prompt-injection-risk patterns) |
 | Reliability | 15% | Whether the server connects at all (currently binary — see [Known Limitations](#known-limitations)) |
 
+These weights are a deliberate, documented choice — not arbitrary — and are not changed casually; see `.agent-room/DECISIONS.md` if you're curious why.
+
 ### How deductions work
 
-Each dimension starts at 100. Diagnostics are grouped by `checkId` and severity (`error`/`warning`/`info`), each contributing capped points (errors up to 25/checkId, warnings up to 15/checkId, info up to 5/checkId) — so **one noisy check can never dominate a dimension**: 20 tools sharing the same description problem cost at most 15 points, not 300. The report's "Deductions" list names exactly which checks cost how many points.
+Each dimension starts at 100. Diagnostics are grouped by `checkId` and severity (`error`/`warning`/`info`), each contributing capped points (errors up to 25/checkId, warnings up to 15/checkId, info up to 5/checkId) — so **one noisy check can never dominate a dimension**: 20 tools sharing the same description problem cost at most 15 points, not 300. The report's "Deductions" list names exactly which checks cost how many points. **Nothing is deducted that isn't also a visible diagnostic** — including protocol-level facts like a negotiated version downgrade or a capability that failed to list, which are their own `protocol.*` diagnostics, not a hidden number baked into the score.
+
+### Coverage: what was actually inspected
+
+A dimension's score only means something if the checks that produce it actually ran. If you run `mcp-medic` with a custom, restricted check set (`runChecks({ checks: [...] })` via the library API), the score's `coverage` tells you which dimensions were fully evaluated (`'covered'`), partially evaluated (`'partial'` — some but not all of that dimension's checks ran), or not evaluated at all (`'not-covered'`). A `security: 'not-covered'` next to `Security 100/100` means "nothing was looked for," not "nothing is wrong." `coveragePercent` summarizes all five as one number. The standard CLI (`check`/`score`) always runs the full built-in check set, so coverage is 100% there by default.
+
+A server that fails to connect is never silently averaged out of a fleet's score either — it's named in `quality.unscoredServers`, and the human report calls it out explicitly.
+
+### Protocol-version-aware quality rules
+
+Some things a check might flag could be a genuine protocol violation for a given negotiated MCP version, or merely an ecosystem style recommendation — mcp-medic never mislabels one as the other. `src/protocol/quality-rules.ts` centralizes what each supported version actually requires (today: no version defines a hard tool-name length or character-pattern constraint, so this distinction is currently latent — the abstraction exists so a future version that *does* add one only needs a new entry there, not a rewrite of every check).
 
 ### Diagnostic categories
 
@@ -187,6 +201,8 @@ Define organization-wide policies that compose with built-in checks:
 
 `quality.minimumScore` fails the run (adds an error diagnostic) if the computed MCP Quality Score falls below the threshold. `quality.maxTools` is an org-enforced hard limit — distinct from the built-in `quality.tool-surface` check's default 100-tool *warning*, which stays a recommendation. `quality.requireToolDescriptions` (or the equivalent top-level `requireToolDescriptions`) turns every missing tool description into a policy error rather than the default warning.
 
+A `minimumScore` gate is also coverage-aware: if the score was computed from incomplete coverage (or a server that couldn't be scored), a `policy.partial-coverage-with-minimum-score` **warning** is added alongside it — a passing score should never look like a clean bill of health when only part of the server was actually evaluated. This never changes the pass/fail outcome of the `minimumScore` check itself (that stays a plain score-vs-threshold comparison), it just makes a partial assessment visible.
+
 ---
 
 ## VS Code Extension (experimental)
@@ -292,6 +308,8 @@ The `security.*` checks are heuristic — they pattern-match on what a server *d
 - **The Reliability quality dimension is currently binary**: 100 if the server connected, 0 if it didn't (plus any future `reliability.*` diagnostics — none exist yet). Signals like latency trends, retry behavior, or flakiness across repeated runs aren't scored yet.
 - **`resources/list`/`prompts/list` pagination (`nextCursor`) is not followed** — mcp-medic inspects only the first page a server returns, matching the existing (also unpaginated) `tools/list` handling. A server with a very large resource/prompt catalog behind pagination will be under-inspected.
 - **The quality score never calls `resources/read`, `prompts/get`, or any tool** — it's entirely derived from the passive `initialize`/`tools/list`/`resources/list`/`prompts/list` responses already gathered during a normal `check`. See [SECURITY.md](./SECURITY.md) for the full passive-only guarantee.
+- **The CLI cannot currently restrict the check set** (no `--only-checks` flag), so `coverage` is always 100% via `check`/`score`. Partial coverage (and the coverage-aware `minimumScore` warning) only happens when the library API's `runChecks({ checks: [...] })` is called with a restricted list.
+- **No currently-supported MCP protocol version defines a hard tool-name length or character-pattern constraint**, so `src/protocol/quality-rules.ts`'s protocol-vs-quality distinction for tool names is real but currently dormant — every finding today is a quality recommendation, never a protocol violation, because no version actually requires one. The abstraction is there for when a future version does.
 - **npm README sync**: Latest docs live on GitHub main; npm README updates on the next publish.
 - **First run via `npx`** pays a one-time cost to resolve and download the package; once installed (or on a warm npx cache), `--help`/`--version` return in well under 100ms.
 

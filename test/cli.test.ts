@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 describe('CLI argument parsing and execution', () => {
   it('parses options correctly', () => {
@@ -170,6 +171,69 @@ describe('CLI argument parsing and execution', () => {
     expect(report.quality.overall).toBeGreaterThanOrEqual(0);
     expect(report.quality.dimensions).toHaveProperty('protocol');
     expect(report.quality.perServer.fake).toBeDefined();
+  });
+
+  describe('quality.minimumScore policy gate', () => {
+    const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.js', import.meta.url));
+
+    it('stays silent about coverage under normal CLI usage, where the full built-in check set always runs', async () => {
+      const { writeFileSync } = await import('node:fs');
+      const configFile = join(tmpdir(), `mcp-medic-partial-coverage-config-${Date.now()}.json`);
+      const policyFile = join(tmpdir(), `mcp-medic-partial-coverage-policy-${Date.now()}.json`);
+      writeFileSync(
+        configFile,
+        JSON.stringify({ servers: [{ name: 'fake', transport: 'stdio', command: process.execPath, args: [fixture, 'normal'] }] }),
+      );
+      writeFileSync(policyFile, JSON.stringify({ quality: { minimumScore: 50 } }));
+
+      const logs: string[] = [];
+      const originalLog = console.log;
+      console.log = (msg: string) => logs.push(msg);
+      let code: number;
+      try {
+        // The CLI always loads the full built-in check set (plus any
+        // policy-derived checks) — there's no CLI flag to run a subset —
+        // so coverage is always 100% here. The partial-coverage warning
+        // itself is unit-tested directly against checkMinimumScorePolicy()
+        // in test/quality-score.test.ts, since the CLI can't reach that
+        // state through normal usage.
+        code = await main(['check', configFile, '--json', '--policy', policyFile]);
+      } finally {
+        console.log = originalLog;
+        rmSync(configFile);
+        rmSync(policyFile);
+      }
+      const report = JSON.parse(logs[0]);
+      expect(code).toBe(0); // score is 100, well above the 50 minimum
+      expect(report.quality.coveragePercent).toBe(100);
+      expect(report.diagnostics.some((d: { checkId: string }) => d.checkId === 'policy.partial-coverage-with-minimum-score')).toBe(false);
+    });
+
+    it('fails the run when the score is below the configured minimum', async () => {
+      const { writeFileSync } = await import('node:fs');
+      const configFile = join(tmpdir(), `mcp-medic-min-score-config-${Date.now()}.json`);
+      const policyFile = join(tmpdir(), `mcp-medic-min-score-policy-${Date.now()}.json`);
+      writeFileSync(
+        configFile,
+        JSON.stringify({ servers: [{ name: 'fake', transport: 'stdio', command: process.execPath, args: [fixture, 'normal'] }] }),
+      );
+      writeFileSync(policyFile, JSON.stringify({ quality: { minimumScore: 101 } })); // impossible to meet
+
+      const logs: string[] = [];
+      const originalLog = console.log;
+      console.log = (msg: string) => logs.push(msg);
+      let code: number;
+      try {
+        code = await main(['check', configFile, '--json', '--policy', policyFile]);
+      } finally {
+        console.log = originalLog;
+        rmSync(configFile);
+        rmSync(policyFile);
+      }
+      const report = JSON.parse(logs[0]);
+      expect(code).toBe(1);
+      expect(report.diagnostics.some((d: { checkId: string }) => d.checkId === 'policy.minimum-quality-score')).toBe(true);
+    });
   });
 
   describe('--export-sarif', () => {
