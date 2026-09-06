@@ -7,9 +7,6 @@ import type {
   Check,
 } from './types.js';
 
-// Codex owns the real implementation of this function in src/protocol/.
-// This stub lets Jules/Antigravity build against a working orchestrator
-// today without waiting on the protocol layer to land.
 async function connectStub(config: MCPConfig['servers'][number]): Promise<MCPConnection> {
   return {
     server: config,
@@ -22,19 +19,21 @@ async function connectStub(config: MCPConfig['servers'][number]): Promise<MCPCon
   };
 }
 
-// Codex: replace this with a real import from src/protocol/connect.ts once
-// the handshake layer exists. Keep the function signature identical so
-// nothing downstream (checks, CLI) needs to change.
 let connectImpl: (
   config: MCPConfig['servers'][number],
   timeoutMs: number,
+  options?: RunOptions,
 ) => Promise<MCPConnection> = (config, _timeoutMs) => connectStub(config);
 
 /** Allows the protocol layer to register its real implementation without
  * this file needing to import it directly (keeps orchestrator decoupled
  * from protocol internals per CONTRACT.md module boundaries). */
 export function registerConnectImpl(
-  impl: (config: MCPConfig['servers'][number], timeoutMs: number) => Promise<MCPConnection>,
+  impl: (
+    config: MCPConfig['servers'][number],
+    timeoutMs: number,
+    options?: RunOptions,
+  ) => Promise<MCPConnection>,
 ): void {
   connectImpl = impl;
 }
@@ -50,7 +49,7 @@ export async function runChecks(
   const diagnostics: DiagnosticResult[] = [];
 
   for (const server of config.servers) {
-    const connection = await connectImpl(server, timeoutMs);
+    const connection = await connectImpl(server, timeoutMs, options);
     connections.push(connection);
 
     if (connection.status !== 'connected') {

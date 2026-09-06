@@ -190,6 +190,9 @@ export const sampleCallSimulationCheck: Check = {
               serverName: connection.server.name,
               toolName: tool.name,
               details: { missingRequiredProperty: reqField },
+              suggestedFix: {
+                description: `Define property "${reqField}" under inputSchema.properties with a valid type.`,
+              },
             });
             generationFailed = true;
             break;
@@ -203,6 +206,9 @@ export const sampleCallSimulationCheck: Check = {
               message: `Sample call generation failed for tool "${tool.name}": property definition for "${reqField}" is not an object.`,
               serverName: connection.server.name,
               toolName: tool.name,
+              suggestedFix: {
+                description: `Update property definition for "${reqField}" to be a valid object with a "type" field.`,
+              },
             });
             generationFailed = true;
             break;
@@ -221,6 +227,9 @@ export const sampleCallSimulationCheck: Check = {
               message: `Sample call generation failed for tool "${tool.name}" on required field "${reqField}": ${genErr instanceof Error ? genErr.message : String(genErr)}`,
               serverName: connection.server.name,
               toolName: tool.name,
+              suggestedFix: {
+                description: `Provide valid enum options or valid bounds for required property "${reqField}".`,
+              },
             });
             generationFailed = true;
             break;
@@ -243,6 +252,9 @@ export const sampleCallSimulationCheck: Check = {
             details: {
               syntheticArgs,
               errors: outcome.errors,
+            },
+            suggestedFix: {
+              description: 'Fix conflicting property constraints (e.g. minimum <= maximum, non-empty enums).',
             },
           });
         } else if (generationCaveats.length > 0 || outcome.caveats.length > 0) {

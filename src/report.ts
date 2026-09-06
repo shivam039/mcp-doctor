@@ -1,9 +1,14 @@
 import type { RunReport } from './types.js';
 
-/** Antigravity: feel free to replace with colored output in the CLI layer;
- * this plain version is the fallback / JSON-adjacent default so the report
- * shape is exercised end-to-end before terminal styling exists. */
-export function formatReportHuman(report: RunReport): string {
+export interface FormatReportOptions {
+  showFixes?: boolean;
+}
+
+/** Human-readable plain text report formatter. */
+export function formatReportHuman(
+  report: RunReport,
+  options: FormatReportOptions = {},
+): string {
   const lines: string[] = [];
   lines.push(`mcp-doctor report${report.configSource ? ` — ${report.configSource}` : ''}`);
   lines.push(
@@ -26,6 +31,9 @@ export function formatReportHuman(report: RunReport): string {
     for (const d of report.diagnostics) {
       const scope = d.toolName ? `${d.serverName}/${d.toolName}` : d.serverName;
       lines.push(`  [${d.severity}] ${scope} — ${d.message} (${d.checkId})`);
+      if (options.showFixes && d.suggestedFix?.description) {
+        lines.push(`    Suggested fix: ${d.suggestedFix.description}`);
+      }
     }
   }
 

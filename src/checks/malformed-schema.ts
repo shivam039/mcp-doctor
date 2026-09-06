@@ -23,6 +23,10 @@ export const malformedSchemaCheck: Check = {
             serverName: connection.server.name,
             toolName: tool.name,
             details: { actualType, inputSchema: schema },
+            suggestedFix: {
+              description:
+                'Replace inputSchema with a valid JSON Schema object, e.g. { "type": "object", "properties": {} }.',
+            },
           });
           continue;
         }
@@ -47,6 +51,9 @@ export const malformedSchemaCheck: Check = {
             serverName: connection.server.name,
             toolName: tool.name,
             details: { inputSchema: schema },
+            suggestedFix: {
+              description: 'Add `"type": "object"` to the inputSchema.',
+            },
           });
         }
       }

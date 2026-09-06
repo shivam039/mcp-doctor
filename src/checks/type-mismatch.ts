@@ -91,6 +91,9 @@ export const typeMismatchCheck: Check = {
                   serverName: connection.server.name,
                   toolName: tool.name,
                   details: { property: propName, invalidType: declaredType },
+                  suggestedFix: {
+                    description: `Change type of property "${propName}" to a valid JSON Schema type (e.g. "string", "number", "integer", "boolean", "object", "array", "null").`,
+                  },
                 });
               }
             } else if (Array.isArray(declaredType)) {
@@ -103,6 +106,9 @@ export const typeMismatchCheck: Check = {
                     serverName: connection.server.name,
                     toolName: tool.name,
                     details: { property: propName, invalidTypeEntry: item },
+                    suggestedFix: {
+                      description: `Remove or correct invalid type entry "${String(item)}" in union type for property "${propName}".`,
+                    },
                   });
                 }
               }
@@ -114,6 +120,9 @@ export const typeMismatchCheck: Check = {
                 serverName: connection.server.name,
                 toolName: tool.name,
                 details: { property: propName, typeDescriptor: declaredType },
+                suggestedFix: {
+                  description: `Specify property "${propName}" type as a string (e.g. "string") or array of strings.`,
+                },
               });
             }
           }
@@ -132,6 +141,9 @@ export const typeMismatchCheck: Check = {
                     property: propName,
                     enumValue: enumVal,
                     declaredType,
+                  },
+                  suggestedFix: {
+                    description: `Ensure all enum entries for property "${propName}" conform to declared type "${JSON.stringify(declaredType)}".`,
                   },
                 });
               }

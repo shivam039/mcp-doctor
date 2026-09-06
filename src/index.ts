@@ -2,6 +2,11 @@ export { runChecks } from './orchestrator.js';
 export { formatReportHuman, formatReportJSON } from './report.js';
 export { loadConfig } from './config-loader.js';
 export type { ConfigLoadResult } from './config-loader.js';
+export { discoverConfigFiles } from './discovery.js';
+export type { DiscoveredConfig } from './discovery.js';
+export { watchFileDebounced } from './watch.js';
+export type { WatchOptions, WatcherHandle } from './watch.js';
+export { runCheckConformanceSuite } from './conformance.js';
+export type { ConformanceResult } from './conformance.js';
 export { allChecks } from './checks/index.js';
 export * from './types.js';
-

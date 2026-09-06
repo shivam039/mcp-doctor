@@ -23,6 +23,9 @@ export const missingDescriptionCheck: Check = {
             message: `Tool "${tool.name}" is missing a description.`,
             serverName: connection.server.name,
             toolName: tool.name,
+            suggestedFix: {
+              description: `Add a "description" field to tool "${tool.name}" explaining what the tool does.`,
+            },
           });
         }
 
@@ -60,6 +63,9 @@ export const missingDescriptionCheck: Check = {
               serverName: connection.server.name,
               toolName: tool.name,
               details: { property: propName },
+              suggestedFix: {
+                description: `Add a "description" field to property "${propName}" in tool "${tool.name}".`,
+              },
             });
           }
         }

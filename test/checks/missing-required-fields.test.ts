@@ -29,6 +29,9 @@ describe('missingRequiredFieldsCheck (schema.missing-required)', () => {
       serverName: 'missing-required-server',
       toolName: 'broken_required_tool',
       message: 'Tool "broken_required_tool" lists required field "nonExistentField1", but it is not defined in "properties".',
+      suggestedFix: {
+        description: expect.stringContaining('nonExistentField1'),
+      },
     });
 
     expect(results[1]).toMatchObject({
@@ -37,6 +40,9 @@ describe('missingRequiredFieldsCheck (schema.missing-required)', () => {
       serverName: 'missing-required-server',
       toolName: 'broken_required_tool',
       message: 'Tool "broken_required_tool" lists required field "nonExistentField2", but it is not defined in "properties".',
+      suggestedFix: {
+        description: expect.stringContaining('nonExistentField2'),
+      },
     });
   });
 
