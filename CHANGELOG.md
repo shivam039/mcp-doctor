@@ -4,6 +4,10 @@ All notable changes to `mcp-medic` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+- (nothing yet)
+
+## [1.0.2] — 2026-09-06
+
 - Repo hygiene: `CONTRIBUTING.md`, this changelog, issue templates, `engines` field in `package.json`.
 - CLI: `--version`/`-V` flag.
 - README: clearer scope on the VS Code extension (experimental, not yet on the Marketplace) and community check packages (planned, not yet published); "Known Limitations" section.

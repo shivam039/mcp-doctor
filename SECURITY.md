@@ -1,6 +1,6 @@
 # Security Policy & Threat Model
 
-`mcp-medic` validates MCP server configurations by executing handshakes, parsing JSON-RPC responses, and inspecting JSON schemas. Because it spawns child processes and parses untrusted input, its internal attack surface is governed by strict defensive controls.
+`mcp-medic` validates MCP server configurations by executing handshakes, parsing JSON-RPC responses, and inspecting JSON schemas. Because it spawns child processes and parses untrusted input, its internal attack surface is governed by strict defensive controls. (For the user-facing warning on how this tool executes and connects to configured servers, see [How this works](./README.md#️-how-this-works--please-read-before-pointing-it-at-a-config) in the README.)
 
 ---
 

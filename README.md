@@ -8,6 +8,9 @@ Diagnose broken MCP (Model Context Protocol) server configs before they break yo
 
 `mcp-medic` validates MCP server configurations, executes full protocol initialization handshakes across stdio/SSE/HTTP transports, checks all exposed tool JSON schemas against standard specifications, and simulates sample calls — providing actionable suggestions and CI-ready exit codes.
 
+> [!NOTE]
+> **Naming & Installation**: The npm package for this tool is **`mcp-medic`** (`npx mcp-medic` / `npm i -g mcp-medic`). While this GitHub repository is named `mcp-doctor`, an unrelated older package already occupies the npm name `mcp-doctor` (different author). Users who want this tool must install **`mcp-medic`**, not `mcp-doctor`.
+
 ## Why this exists
 
 A broken MCP server config usually doesn't fail loudly — it fails as your agent silently missing a tool, retrying a handshake forever, or getting a malformed schema it can't reason about. Those bugs are miserable to track down after the fact. `mcp-medic` catches them at the config level, before an agent ever touches the server: it actually connects (real `initialize` handshake, real `tools/list`), so "the config parses" and "the server actually works" are checked together, in CI, with a real exit code.
