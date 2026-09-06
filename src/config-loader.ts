@@ -56,10 +56,32 @@ export function loadConfig(rawJson: unknown, sourcePath?: string): ConfigLoadRes
   const errors: string[] = [];
 
   if (typeof rawJson !== 'object' || rawJson === null || Array.isArray(rawJson)) {
-    return { errors: ['config: expected a top-level object with a "servers" array'] };
+    return { errors: ['config: expected a top-level object with a "servers" array or "mcpServers" map'] };
   }
 
   const raw = rawJson as Record<string, unknown>;
+
+  // Normalize { mcpServers: { serverName: { ... } } } format (Claude Desktop / Cursor)
+  if (!Array.isArray(raw.servers) && raw.mcpServers && typeof raw.mcpServers === 'object' && !Array.isArray(raw.mcpServers)) {
+    const serversList: MCPServerConfig[] = [];
+    for (const [name, def] of Object.entries(raw.mcpServers as Record<string, unknown>)) {
+      if (typeof def === 'object' && def !== null && !Array.isArray(def)) {
+        const obj = def as Record<string, unknown>;
+        const transport: TransportType =
+          (obj.transport as TransportType) || (obj.url ? (String(obj.url).includes('sse') ? 'sse' : 'http') : 'stdio');
+        serversList.push({
+          name,
+          transport,
+          command: typeof obj.command === 'string' ? obj.command : undefined,
+          args: Array.isArray(obj.args) ? (obj.args as string[]) : undefined,
+          env: (obj.env as Record<string, string>) || undefined,
+          url: typeof obj.url === 'string' ? obj.url : undefined,
+          headers: (obj.headers as Record<string, string>) || undefined,
+        });
+      }
+    }
+    return { config: { servers: serversList, sourcePath }, errors: [] };
+  }
 
   if (!Array.isArray(raw.servers)) {
     return { errors: ['config: "servers" must be an array'] };

@@ -1,18 +1,29 @@
 #!/usr/bin/env node
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { runChecks, registerConnectImpl } from './orchestrator.js';
 import { formatReportHuman, formatReportJSON } from './report.js';
 import { loadConfig } from './config-loader.js';
 import { discoverConfigFiles } from './discovery.js';
 import { watchFileDebounced } from './watch.js';
 import { resolveRegistryServer } from './registry.js';
-import type { Check, MCPConfig } from './types.js';
+import { loadPolicy, createPolicyChecks } from './policy.js';
+import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline } from './fleet.js';
+import { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
+import type { Check, MCPConfig, RunReport } from './types.js';
 import pc from 'picocolors';
 
 export interface ParsedArgs {
-  command: 'check' | 'watch' | 'help';
+  command: 'check' | 'watch' | 'check-all' | 'diff' | 'help';
   configPath?: string;
+  configPathB?: string;
+  globPattern?: string;
   registryServer?: string;
+  policyPath?: string;
+  exportJunit?: string;
+  exportJson?: string;
+  snapshotPath?: string;
+  updateSnapshotPath?: string;
   json: boolean;
   timeoutMs?: number;
   showFixes: boolean;
@@ -46,6 +57,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
         throw new Error(`--fail-on requires "error" or "warning", got: ${val ?? '(none)'}`);
       }
       args.failOn = val;
+    } else if (arg === '--policy') {
+      args.policyPath = argv[++i];
+    } else if (arg === '--export-junit' || arg === '--junit') {
+      args.exportJunit = argv[++i];
+    } else if (arg === '--export-json') {
+      args.exportJson = argv[++i];
+    } else if (arg === '--snapshot') {
+      args.snapshotPath = argv[++i];
+    } else if (arg === '--update-snapshot') {
+      args.updateSnapshotPath = argv[++i];
     } else if (arg === '--registry') {
       const val = argv[++i];
       if (!val) {
@@ -71,13 +92,21 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (args.command !== 'help') {
-    if (positional[0] === 'check' || positional[0] === 'watch') {
-      args.command = positional[0];
-      if (!args.configPath && positional[1]) {
+    const first = positional[0];
+    if (first === 'check' || first === 'watch' || first === 'check-all' || first === 'diff') {
+      args.command = first;
+      if (first === 'diff') {
         args.configPath = positional[1];
+        args.configPathB = positional[2];
+      } else if (first === 'check-all') {
+        args.globPattern = positional[1] || '**/*mcp*.json';
+      } else {
+        if (!args.configPath && positional[1]) {
+          args.configPath = positional[1];
+        }
       }
-    } else if (positional[0] && !args.configPath) {
-      args.configPath = positional[0];
+    } else if (first && !args.configPath) {
+      args.configPath = first;
     }
   }
 
@@ -92,10 +121,16 @@ async function importOptional(specifier: string): Promise<Record<string, unknown
   }
 }
 
-async function loadChecks(): Promise<Check[]> {
+async function loadChecks(policyPath?: string): Promise<Check[]> {
   const mod = await importOptional('./checks/index.js');
-  const checks = mod?.allChecks;
-  return Array.isArray(checks) ? (checks as Check[]) : [];
+  const baseChecks = Array.isArray(mod?.allChecks) ? (mod?.allChecks as Check[]) : [];
+
+  const policy = loadPolicy(policyPath);
+  if (policy) {
+    const policyChecks = createPolicyChecks(policy);
+    return [...baseChecks, ...policyChecks];
+  }
+  return baseChecks;
 }
 
 async function loadProtocol(): Promise<void> {
@@ -115,11 +150,18 @@ ${pc.bold('mcp-doctor')} — Diagnose broken MCP server configs before they brea
 ${pc.bold('USAGE')}
   $ mcp-doctor [check] [path/to/config.json] [options]
   $ mcp-doctor check --registry <server-id> [options]
+  $ mcp-doctor check-all "<glob-pattern>" [options]
+  $ mcp-doctor diff <configA.json> <configB.json>
   $ mcp-doctor watch <path/to/config.json> [options]
 
 ${pc.bold('OPTIONS')}
   --config <path>       Specify path to MCP configuration file
   --registry <id/url>   Validate published registry entry directly
+  --policy <path>       Apply organizational policy rules (.mcp-doctor-policy.json)
+  --snapshot <path>     Filter report against baseline snapshot, reporting regressions only
+  --update-snapshot <p> Save diagnostic report as new baseline snapshot
+  --export-junit <file> Export report in JUnit XML format
+  --export-json <file>  Export report in JSON format
   --show-fixes          Print actionable suggested fixes under diagnostics
   --fail-on <severity>  Exit with code 1 on 'error' (default) or 'warning'
   --verbose, -v         Print raw JSON-RPC traffic and debug messages
@@ -152,13 +194,55 @@ async function executeCheck(
   config: MCPConfig,
   args: ParsedArgs,
 ): Promise<number> {
-  const [checks] = await Promise.all([loadChecks(), loadProtocol()]);
+  const [checks] = await Promise.all([loadChecks(args.policyPath), loadProtocol()]);
 
-  const report = await runChecks(config, {
+  let report = await runChecks(config, {
     timeoutMs: args.timeoutMs,
     checks,
     verbose: args.verbose,
   });
+
+  // Handle baseline snapshot comparison
+  if (args.snapshotPath) {
+    if (existsSync(args.snapshotPath)) {
+      try {
+        const baseline = JSON.parse(readFileSync(args.snapshotPath, 'utf-8')) as RunReport;
+        report = filterDiagnosticsByBaseline(report, baseline);
+      } catch (err) {
+        console.error(pc.yellow(`Warning: Could not read snapshot baseline: ${String(err)}`));
+      }
+    }
+  }
+
+  // Handle update snapshot
+  if (args.updateSnapshotPath) {
+    try {
+      writeFileSync(resolve(args.updateSnapshotPath), JSON.stringify(report, null, 2));
+      if (!args.json) {
+        console.log(pc.green(`Updated baseline snapshot at ${args.updateSnapshotPath}`));
+      }
+    } catch (err) {
+      console.error(pc.red(`Failed to save snapshot: ${String(err)}`));
+    }
+  }
+
+  // Handle JUnit XML export
+  if (args.exportJunit) {
+    try {
+      writeFileSync(resolve(args.exportJunit), formatReportJUnit(report));
+    } catch (err) {
+      console.error(pc.red(`Failed to write JUnit export: ${String(err)}`));
+    }
+  }
+
+  // Handle JSON export
+  if (args.exportJson) {
+    try {
+      writeFileSync(resolve(args.exportJson), JSON.stringify(report, null, 2));
+    } catch (err) {
+      console.error(pc.red(`Failed to write JSON export: ${String(err)}`));
+    }
+  }
 
   if (args.json) {
     console.log(formatReportJSON(report));
@@ -227,6 +311,90 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   if (args.command === 'help') {
     printHelp();
     return 0;
+  }
+
+  // Handle diff command
+  if (args.command === 'diff') {
+    if (!args.configPath || !args.configPathB) {
+      console.error(pc.red('mcp-doctor diff requires two config paths: mcp-doctor diff <configA> <configB>'));
+      return 2;
+    }
+    const [resA, resB] = await Promise.all([
+      loadConfigFromPath(args.configPath),
+      loadConfigFromPath(args.configPathB),
+    ]);
+    if (!resA.config || !resB.config) return 2;
+
+    const diff = diffConfigs(resA.config, resB.config);
+    if (args.json) {
+      console.log(JSON.stringify(diff, null, 2));
+    } else {
+      console.log(pc.bold(`\nMCP Config Drift Report`));
+      console.log(`Config A: ${args.configPath}`);
+      console.log(`Config B: ${args.configPathB}\n`);
+
+      if (diff.identical) {
+        console.log(pc.green('✔ Configurations are identical. No drift detected.'));
+      } else {
+        for (const entry of diff.entries) {
+          if (entry.kind === 'added') {
+            console.log(pc.green(`+ Added in B: ${entry.serverName}`));
+          } else if (entry.kind === 'removed') {
+            console.log(pc.red(`- Removed in B: ${entry.serverName}`));
+          } else if (entry.kind === 'modified') {
+            console.log(pc.yellow(`~ Modified server: ${entry.serverName}`));
+            for (const ch of entry.changes || []) {
+              console.log(pc.dim(`    ${ch.field}: ${JSON.stringify(ch.from)} -> ${JSON.stringify(ch.to)}`));
+            }
+          }
+        }
+      }
+    }
+    return diff.identical ? 0 : 1;
+  }
+
+  // Handle fleet check-all command
+  if (args.command === 'check-all') {
+    const glob = args.globPattern || '**/*mcp*.json';
+    const [checks] = await Promise.all([loadChecks(args.policyPath), loadProtocol()]);
+    const fleetReport = await runFleetChecks(glob, {
+      checks,
+      timeoutMs: args.timeoutMs,
+      verbose: args.verbose,
+    });
+
+    if (args.exportJunit) {
+      try {
+        writeFileSync(resolve(args.exportJunit), formatFleetReportJUnit(fleetReport));
+      } catch (err) {
+        console.error(pc.red(`Failed to write JUnit export: ${String(err)}`));
+      }
+    }
+
+    if (args.json) {
+      console.log(JSON.stringify(fleetReport, null, 2));
+    } else {
+      console.log(pc.bold(`\nMCP Doctor Fleet Report`));
+      console.log(`Files scanned: ${fleetReport.totalFiles} (${fleetReport.successfulFiles} valid, ${fleetReport.failedFiles} invalid)`);
+      console.log(`Servers checked: ${fleetReport.totalServers}`);
+      console.log(`Results: ${fleetReport.totalErrors} error(s), ${fleetReport.totalWarnings} warning(s)\n`);
+
+      for (const res of fleetReport.fileResults) {
+        if (res.error) {
+          console.log(pc.red(`[FAIL] ${res.filePath} — ${res.error}`));
+        } else if (res.report) {
+          const status = res.report.summary.errors === 0 ? pc.green('[PASS]') : pc.red('[FAIL]');
+          console.log(`${status} ${res.filePath} (${res.report.summary.servers} servers, ${res.report.summary.errors} errors, ${res.report.summary.warnings} warnings)`);
+        }
+      }
+    }
+
+    const hasErrors = fleetReport.totalErrors > 0;
+    const hasWarnings = fleetReport.totalWarnings > 0;
+    if (args.failOn === 'warning') {
+      return hasErrors || hasWarnings ? 1 : 0;
+    }
+    return hasErrors ? 1 : 0;
   }
 
   // Handle direct registry validation

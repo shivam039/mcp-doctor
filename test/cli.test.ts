@@ -50,4 +50,28 @@ describe('CLI argument parsing and execution', () => {
     expect(args.command).toBe('check');
     expect(args.registryServer).toBe('@modelcontextprotocol/server-memory');
   });
+
+  it('parses check-all and diff commands correctly', () => {
+    const argsAll = parseArgs(['check-all', 'configs/**/*.json', '--policy', 'my-policy.json', '--junit', 'results.xml']);
+    expect(argsAll.command).toBe('check-all');
+    expect(argsAll.globPattern).toBe('configs/**/*.json');
+    expect(argsAll.policyPath).toBe('my-policy.json');
+    expect(argsAll.exportJunit).toBe('results.xml');
+
+    const argsDiff = parseArgs(['diff', 'staging.json', 'prod.json', '--json']);
+    expect(argsDiff.command).toBe('diff');
+    expect(argsDiff.configPath).toBe('staging.json');
+    expect(argsDiff.configPathB).toBe('prod.json');
+    expect(argsDiff.json).toBe(true);
+  });
+
+  it('executes diff command comparing two identical configs', async () => {
+    const code = await main([
+      'diff',
+      'test/fixtures/configs/valid-stdio.json',
+      'test/fixtures/configs/valid-stdio.json',
+      '--json',
+    ]);
+    expect(code).toBe(0);
+  });
 });

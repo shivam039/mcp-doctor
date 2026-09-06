@@ -11,5 +11,15 @@ export type { ConformanceResult } from './conformance.js';
 export { resolveRegistryServer } from './registry.js';
 export type { RegistryResolveOptions } from './registry.js';
 export { isMCPConfigFile, validateMCPDocument, activateExtension } from './extension/index.js';
+export { loadPolicy, createPolicyChecks } from './policy.js';
+export type { MCPDoctorPolicy } from './policy.js';
+export {
+  runFleetChecks,
+  diffConfigs,
+  filterDiagnosticsByBaseline,
+  findConfigFiles,
+} from './fleet.js';
+export type { FleetReport, ConfigDiffResult, ConfigDiffEntry, FileRunResult } from './fleet.js';
+export { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
 export { allChecks } from './checks/index.js';
 export * from './types.js';
