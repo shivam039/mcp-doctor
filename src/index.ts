@@ -21,5 +21,15 @@ export {
 } from './fleet.js';
 export type { FleetReport, ConfigDiffResult, ConfigDiffEntry, FileRunResult } from './fleet.js';
 export { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
+export { formatReportSarif } from './sarif.js';
 export { allChecks } from './checks/index.js';
+export {
+  SUPPORTED_PROTOCOL_VERSIONS,
+  LATEST_SUPPORTED_PROTOCOL_VERSION,
+  KNOWN_UNSUPPORTED_PROTOCOL_VERSIONS,
+  isSupportedProtocolVersion,
+  resolveRequestedProtocolVersion,
+} from './protocol/versions.js';
+export type { SupportedProtocolVersion, ProtocolVersionNegotiation } from './protocol/versions.js';
+export { isSecretKey, redactRecord, redactDeep, sanitizeServerConfig } from './redact.js';
 export * from './types.js';

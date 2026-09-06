@@ -1,8 +1,25 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import type { MCPConnection, MCPServerConfig, MCPToolDefinition, RunOptions } from '../types.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import type { MCPConnection, MCPServerConfig, MCPServerInfo, MCPToolDefinition, RunOptions } from '../types.js';
+import {
+  KNOWN_UNSUPPORTED_PROTOCOL_VERSIONS,
+  SUPPORTED_PROTOCOL_VERSIONS,
+  isSupportedProtocolVersion,
+  resolveRequestedProtocolVersion,
+} from './versions.js';
 
-const PROTOCOL_VERSION = '2024-11-05';
-const CLIENT_INFO = { name: 'mcp-medic', version: '1.0.0' };
+function readOwnVersion(): string {
+  try {
+    const pkgPath = fileURLToPath(new URL('../../package.json', import.meta.url));
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const CLIENT_INFO = { name: 'mcp-medic', version: readOwnVersion() };
 
 interface JsonRpcResponse {
   jsonrpc: '2.0';
@@ -35,8 +52,23 @@ function failed(
   stage: 'spawn' | 'handshake' | 'capability-negotiation' | 'list-tools',
   message: string,
   raw?: unknown,
+  extra?: Pick<MCPConnection, 'protocolVersion' | 'serverInfo' | 'latencyMs'>,
 ): MCPConnection {
-  return { server: config, status, error: { stage, message, ...(raw === undefined ? {} : { raw }) } };
+  return {
+    server: config,
+    status,
+    error: { stage, message, ...(raw === undefined ? {} : { raw }) },
+    ...extra,
+  };
+}
+
+function normalizeServerInfo(value: unknown): MCPServerInfo | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const info: MCPServerInfo = {};
+  if (typeof record.name === 'string') info.name = record.name;
+  if (typeof record.version === 'string') info.version = record.version;
+  return info.name || info.version ? info : undefined;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -419,6 +451,23 @@ export async function connect(
   options?: RunOptions,
 ): Promise<MCPConnection> {
   const started = Date.now();
+  const requestedVersion = resolveRequestedProtocolVersion(options?.protocolVersion);
+
+  // Some real MCP protocol versions use a wire shape this client doesn't
+  // implement (e.g. 2026-07-28 drops the initialize handshake entirely).
+  // Fail fast on those, before spawning a process or opening a connection,
+  // rather than attempting a handshake that was never going to work.
+  const unsupportedReason = KNOWN_UNSUPPORTED_PROTOCOL_VERSIONS[requestedVersion];
+  if (unsupportedReason) {
+    return failed(
+      config,
+      'failed',
+      'handshake',
+      `cannot request protocol version ${requestedVersion}: ${unsupportedReason}. ` +
+        `This client supports: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}.`,
+    );
+  }
+
   let transport: Transport | undefined;
   try {
     if (config.transport === 'stdio') {
@@ -449,7 +498,7 @@ export async function connect(
     try {
       const response = await withTimeout(
         transport.request('initialize', {
-          protocolVersion: PROTOCOL_VERSION,
+          protocolVersion: requestedVersion,
           capabilities: {},
           clientInfo: CLIENT_INFO,
         }),
@@ -460,6 +509,12 @@ export async function connect(
       if (!initialize.capabilities || typeof initialize.capabilities !== 'object') {
         throw new Error('initialize response has no capabilities object');
       }
+      if (typeof initialize.protocolVersion !== 'string' || !initialize.protocolVersion) {
+        throw new Error(
+          'initialize response is missing a protocolVersion string (protocol violation — ' +
+            'the server MUST report the version it negotiated)',
+        );
+      }
     } catch (error) {
       const timedOut = messageOf(error).includes('timed out');
       const message = messageOf(error);
@@ -469,6 +524,29 @@ export async function connect(
         message.startsWith('failed to start') ? 'spawn' : 'handshake',
         message,
         error,
+      );
+    }
+
+    const negotiatedVersion = initialize.protocolVersion as string;
+    const compatible = isSupportedProtocolVersion(negotiatedVersion);
+    const protocolVersion = { requested: requestedVersion, negotiated: negotiatedVersion, compatible };
+    const serverInfo = normalizeServerInfo(initialize.serverInfo);
+    const capabilities = initialize.capabilities as Record<string, unknown>;
+
+    if (!compatible) {
+      // Per spec: if the client doesn't support the version the server
+      // negotiated, it SHOULD disconnect rather than proceed — don't send
+      // notifications/initialized or tools/list against a protocol version
+      // this client can't actually speak.
+      return failed(
+        config,
+        'failed',
+        'handshake',
+        `protocol version mismatch: requested ${requestedVersion}, server negotiated ` +
+          `${negotiatedVersion}, which this client does not support. ` +
+          `This client supports: ${SUPPORTED_PROTOCOL_VERSIONS.join(', ')}.`,
+        undefined,
+        { protocolVersion, serverInfo, latencyMs: Date.now() - started },
       );
     }
 
@@ -485,6 +563,7 @@ export async function connect(
         'capability-negotiation',
         messageOf(error),
         error,
+        { protocolVersion, serverInfo },
       );
     }
 
@@ -498,8 +577,10 @@ export async function connect(
       return {
         server: config,
         status: 'connected',
-        capabilities: initialize.capabilities as Record<string, unknown>,
+        capabilities,
         tools,
+        protocolVersion,
+        serverInfo,
         latencyMs: Date.now() - started,
       };
     } catch (error) {
@@ -509,6 +590,7 @@ export async function connect(
         'list-tools',
         messageOf(error),
         error,
+        { protocolVersion, serverInfo },
       );
     }
   } catch (error) {

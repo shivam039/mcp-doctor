@@ -80,11 +80,25 @@ export interface MCPConfig {
 
 // ---- Connection (produced by the protocol/handshake layer) ----
 
+export interface ProtocolVersionInfo {
+  requested: string;         // what this client asked for in `initialize` (after resolving "auto")
+  negotiated?: string;       // what the server's initialize response actually reported; absent if the
+                              // handshake failed before a response, or the response omitted it (protocol violation)
+  compatible: boolean;       // whether `negotiated` is one of this client's SUPPORTED_PROTOCOL_VERSIONS
+}
+
+export interface MCPServerInfo {
+  name?: string;
+  version?: string;
+}
+
 export interface MCPConnection {
   server: MCPServerConfig;
   status: 'connected' | 'failed' | 'timeout';
   capabilities?: Record<string, unknown>; // raw capabilities from initialize response
   tools?: MCPToolDefinition[];
+  protocolVersion?: ProtocolVersionInfo;
+  serverInfo?: MCPServerInfo;
   error?: {
     stage: 'spawn' | 'handshake' | 'capability-negotiation' | 'list-tools';
     message: string;
@@ -139,6 +153,9 @@ export interface RunOptions {
   checks?: Check[];         // defaults to all registered built-in checks
   verbose?: boolean;
   onLog?: (message: string) => void;
+  protocolVersion?: string; // MCP protocolVersion to request: "auto" (default) or an explicit
+                              // version string, e.g. "2025-06-18". See src/protocol/versions.ts
+                              // for SUPPORTED_PROTOCOL_VERSIONS and negotiation rules.
 }
 
 export interface RunReport {
@@ -169,6 +186,8 @@ export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunR
 | CLI entry point + fixtures (broken sample configs) + colored output | **Antigravity** | `src/cli.ts`, `test/fixtures/*.json` |
 | Interactive auto-fix command + config-patch logic (Phase 3) | **Antigravity** | `src/fix.ts`, `fix` command in `src/cli.ts` |
 | Security heuristic checks (Phase 3 — normally Jules' `src/checks/*` area; implemented by Antigravity this session per direct human request, since `fix` and the checks that produce fixable patches are tightly coupled) | **Antigravity** | `src/checks/security-*.ts` |
+| Secret redaction (headers/env/token-body values scrubbed before reaching any report, export, or diff) | **core** | `src/redact.ts` |
+| SARIF 2.1.0 export (`--export-sarif`, single-config `check`/`fix` path only — fleet/`check-all` has no SARIF formatter yet) | **core** | `src/sarif.ts` |
 
 **Merge order:** core types → protocol layer → checks → CLI. Checks need a
 real or mocked `MCPConnection`; CLI needs checks; nobody should block on

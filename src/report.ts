@@ -20,6 +20,13 @@ export function formatReportHuman(
   for (const conn of report.connections) {
     const status = conn.status === 'connected' ? 'OK' : conn.status.toUpperCase();
     lines.push(`[${status}] ${conn.server.name} (${conn.server.transport})`);
+    if (conn.protocolVersion) {
+      const { requested, negotiated, compatible } = conn.protocolVersion;
+      const statusText = compatible ? '✓ compatible' : '✗ incompatible';
+      lines.push(
+        `  Protocol: requested ${requested}, server negotiated ${negotiated ?? '(none)'} — ${statusText}`,
+      );
+    }
     if (conn.error) {
       lines.push(`  ${conn.error.stage}: ${conn.error.message}`);
     }

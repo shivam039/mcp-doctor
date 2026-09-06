@@ -4,6 +4,7 @@ import { loadConfig } from './config-loader.js';
 import { runChecks } from './orchestrator.js';
 import { allChecks } from './checks/index.js';
 import type { MCPConfig, MCPServerConfig, RunReport, RunOptions, DiagnosticResult } from './types.js';
+import { redactRecord } from './redact.js';
 
 export interface FileRunResult {
   filePath: string;
@@ -155,7 +156,10 @@ export function diffConfigs(
         changes.push({ field: 'url', from: serverA.url, to: serverB.url });
       }
       if (JSON.stringify(serverA.env) !== JSON.stringify(serverB.env)) {
-        changes.push({ field: 'env', from: serverA.env, to: serverB.env });
+        // Report that env changed and which keys, but never raw values —
+        // env vars routinely carry API keys/tokens and diff output gets
+        // pasted into PRs and CI logs.
+        changes.push({ field: 'env', from: redactRecord(serverA.env), to: redactRecord(serverB.env) });
       }
       if (changes.length > 0) {
         entries.push({ serverName: name, kind: 'modified', changes });

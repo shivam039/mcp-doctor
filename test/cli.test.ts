@@ -1,7 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { parseArgs, main } from '../src/cli.js';
 import { resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('CLI argument parsing and execution', () => {
   it('parses options correctly', () => {
@@ -95,5 +97,47 @@ describe('CLI argument parsing and execution', () => {
       '--json',
     ]);
     expect(code).toBe(0);
+  });
+
+  it('parses --protocol-version, defaulting to "auto"', () => {
+    expect(parseArgs(['check', 'x.json']).protocolVersion).toBe('auto');
+    expect(parseArgs(['check', 'x.json', '--protocol-version', '2025-06-18']).protocolVersion).toBe(
+      '2025-06-18',
+    );
+  });
+
+  it('rejects --protocol-version with no value', () => {
+    expect(() => parseArgs(['check', 'x.json', '--protocol-version'])).toThrow(
+      /--protocol-version requires a value/,
+    );
+  });
+
+  describe('--export-sarif', () => {
+    const outFile = join(tmpdir(), `mcp-medic-sarif-test-${Date.now()}.sarif.json`);
+    // Loopback port with nothing listening: connection refused immediately,
+    // no network egress and no timeout wait — just needs a report to exist.
+    const configFile = join(tmpdir(), `mcp-medic-sarif-config-${Date.now()}.json`);
+
+    afterEach(() => {
+      if (existsSync(outFile)) rmSync(outFile);
+      if (existsSync(configFile)) rmSync(configFile);
+    });
+
+    it('writes a well-formed SARIF file alongside the normal report', async () => {
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(
+        configFile,
+        JSON.stringify({ servers: [{ name: 'unreachable', transport: 'http', url: 'http://127.0.0.1:1/mcp' }] }),
+      );
+
+      const code = await main(['check', configFile, '--json', '--export-sarif', outFile]);
+      // A connection failure alone (no diagnostics ran) doesn't fail the exit code;
+      // what matters here is that the report still exists and gets exported.
+      expect(code).toBe(0);
+      expect(existsSync(outFile)).toBe(true);
+      const sarif = JSON.parse(readFileSync(outFile, 'utf-8'));
+      expect(sarif.version).toBe('2.1.0');
+      expect(sarif.runs[0].tool.driver.name).toBe('mcp-medic');
+    });
   });
 });

@@ -6,6 +6,7 @@ import type {
   DiagnosticResult,
   Check,
 } from './types.js';
+import { sanitizeServerConfig } from './redact.js';
 
 async function connectStub(config: MCPConfig['servers'][number]): Promise<MCPConnection> {
   return {
@@ -49,7 +50,12 @@ export async function runChecks(
   const diagnostics: DiagnosticResult[] = [];
 
   for (const server of config.servers) {
-    const connection = await connectImpl(server, timeoutMs, options);
+    const rawConnection = await connectImpl(server, timeoutMs, options);
+    // Redact secret-looking header/env/token-body values before this ever
+    // reaches a report, JSON export, or JUnit output — checks only read
+    // `server.name`/`transport`/`url`, never header or env *values*, so
+    // this can't change diagnostic behavior.
+    const connection: MCPConnection = { ...rawConnection, server: sanitizeServerConfig(server) };
     connections.push(connection);
 
     if (connection.status !== 'connected') {

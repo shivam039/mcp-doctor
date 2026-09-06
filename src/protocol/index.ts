@@ -6,3 +6,4 @@ export function registerProtocol(): void {
 }
 
 export { connect };
+export * from './versions.js';

@@ -27,4 +27,34 @@ describe('orchestrator with allChecks', () => {
     expect(report.diagnostics.length).toBeGreaterThan(0);
     expect(report.summary.errors).toBeGreaterThan(0);
   });
+
+  it('redacts secret-looking header/env values before they reach the report', async () => {
+    registerConnectImpl(async (server): Promise<MCPConnection> => ({
+      ...validConnection,
+      server,
+    }));
+
+    const config: MCPConfig = {
+      servers: [
+        {
+          name: 'remote',
+          transport: 'http',
+          url: 'https://example.com/mcp',
+          headers: { Authorization: 'Bearer sk-live-secret', Accept: 'application/json' },
+          env: { API_KEY: 'sk-live-secret', NODE_ENV: 'production' },
+        },
+      ],
+    };
+
+    const report = await runChecks(config, {});
+    const reportedServer = report.connections[0]?.server;
+    const serialized = JSON.stringify(report);
+
+    expect(reportedServer?.headers).toEqual({
+      Authorization: '[REDACTED]',
+      Accept: 'application/json',
+    });
+    expect(reportedServer?.env).toEqual({ API_KEY: '[REDACTED]', NODE_ENV: 'production' });
+    expect(serialized).not.toContain('sk-live-secret');
+  });
 });

@@ -125,4 +125,86 @@ Reason: The original unscoped name `mcp-doctor` was already registered on npm by
 preserves the medical/diagnostic theme, is fully published (v1.0.0 & v1.0.1), and tokenless OIDC eliminates
 static secret expiration and annual token rotation maintenance.
 
+## 2026-09-06 — [codex] Real protocol version negotiation, replacing the hardcoded `2024-11-05`
+Decision: Add `src/protocol/versions.ts` as the single source of truth for protocol
+versions: `SUPPORTED_PROTOCOL_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']`
+(newest first), `LATEST_SUPPORTED_PROTOCOL_VERSION`, `resolveRequestedProtocolVersion()`
+(maps `undefined`/`"auto"` → latest, else passes an explicit string through unchanged),
+and `KNOWN_UNSUPPORTED_PROTOCOL_VERSIONS`, currently just `{ '2026-07-28': <reason> }`.
+`connect()` (`src/protocol/connect.ts`) now: (1) fast-fails before spawning any process
+if the requested version is in `KNOWN_UNSUPPORTED_PROTOCOL_VERSIONS`; (2) sends the
+resolved version in the `initialize` request instead of a hardcoded constant; (3) reads
+back whatever `protocolVersion` the server's `initialize` response actually reports,
+erroring at `handshake` stage if it's missing entirely (a protocol violation — the spec
+requires the server to report the version it negotiated); (4) compares that negotiated
+version against `SUPPORTED_PROTOCOL_VERSIONS` and, if incompatible, fails cleanly at
+`handshake` stage *without* sending `notifications/initialized` or calling `tools/list`
+(matches the spec's "client SHOULD disconnect if it doesn't support the server's
+negotiated version" guidance). `MCPConnection` gained `protocolVersion: ProtocolVersionInfo`
+(`{ requested, negotiated?, compatible }`) and `serverInfo: MCPServerInfo` (`{ name?, version? }`,
+read from the server's `initialize` response instead of being silently discarded).
+`RunOptions` gained `protocolVersion?: string`, threaded through the CLI's new
+`--protocol-version <v>` flag (default `"auto"`) into `runChecks`/`runFleetChecks`.
+`src/report.ts` prints a `Protocol: requested X, server negotiated Y — ✓/✗ compatible`
+line per connection; `src/cli.ts` colorizes the ✗ case red.
+Reason: the previous implementation hardcoded `protocolVersion: '2024-11-05'` in both
+the outgoing `initialize` request and implicitly assumed whatever the server sent back
+was fine — it never read or validated the server's actual negotiated version, so a
+server silently downgrading, omitting the field, or negotiating a version this client
+can't speak would go completely undetected and mcp-medic would proceed to call
+`tools/list` anyway. Versions were confirmed against the real upstream MCP spec
+(`github.com/modelcontextprotocol/modelcontextprotocol`): `2024-11-05`, `2025-03-26`,
+`2025-06-18`, `2025-11-25`, and `2026-07-28` all exist; `2025-11-25` is additive-only
+over `2025-06-18` (safe to add to the supported list), but `2026-07-28` removes the
+`initialize`/`notifications/initialized` handshake entirely in favor of a stateless
+per-request model (version + capabilities carried per-request in `_meta`, plus a new
+`server/discover` RPC) — a different wire protocol this client's stdio/SSE/HTTP
+transport code does not implement. Rather than silently mis-negotiating that version or
+simply rejecting it as an invalid CLI argument, `--protocol-version 2026-07-28` is
+accepted as valid input but `connect()` fails fast with a specific, honest diagnostic
+naming what's unimplemented and which versions are actually supported — before spawning
+any process, so a bad version choice never wastes a real connection attempt or leaks a
+child process. New fixture modes for this in `test/fixtures/fake-mcp-server.js`:
+`no-protocol-version`, `downgrade`, `incompatible-version`; `normal` mode now echoes
+back whatever `protocolVersion` the client requested instead of a hardcoded value.
+Covered by 7 new tests in `test/protocol/connect.test.ts` (`describe('protocol version
+negotiation', ...)`, 127 total tests passing, up from 120).
+
+## 2026-09-06 — [core] Secret redaction (src/redact.ts) + SARIF export (src/sarif.ts)
+Decision: Add `src/redact.ts` (`isSecretKey`, `redactRecord`, `redactDeep`,
+`sanitizeServerConfig`) and call `sanitizeServerConfig(server)` in
+`orchestrator.ts`'s `runChecks()` before a connection is pushed into
+`RunReport.connections`, and `redactRecord()` on `env` values in
+`fleet.ts`'s `diffConfigs()`. Separately, add `src/sarif.ts`
+(`formatReportSarif`) and a `--export-sarif <file>` CLI flag.
+Reason (redaction): audited every place `MCPServerConfig` data reaches
+output. Confirmed no built-in check reads `.headers`/`.env`/`.tokenRefreshBody`
+*values* (only `.name`/`.transport`/`.url`), but `--json`/`--export-json`
+(`formatReportJSON` → `JSON.stringify(report)`) and `diff`'s `env` change
+entries serialized those raw values verbatim — a config with
+`headers: { Authorization: "Bearer sk-..." }` or `env: { API_KEY: "..." }`
+would leak the literal secret into report/export/diff output, which
+routinely gets pasted into CI logs, PRs, and issue trackers. This directly
+violates the standing constraint (never log auth headers, bearer tokens,
+API keys, cookies, or secret env vars). Since checks don't need the real
+values, redacting at the point a connection enters the report is safe and
+changes no diagnostic behavior — verified by a new test asserting a report
+containing a live secret string never appears in `JSON.stringify(report)`
+after redaction, plus unit tests for `redact.ts` itself and a `diff`-level
+test for the `env` redaction. Non-secret keys (`Content-Type`, `NODE_ENV`)
+are left visible so output stays debuggable. `--verbose` JSON-RPC wire
+logging in `src/protocol/connect.ts` was audited too — it already only
+logs request/response bodies, never the `headers` object itself, so no
+change was needed there.
+Reason (SARIF): `--export-sarif` was on the explicit acceptance-criteria
+list for CI integration alongside the existing JUnit/JSON exports (see
+`src/junit.ts`, same report-formatter pattern). mcp-medic diagnoses a
+*running server's* declared tools/capabilities, not source code, so there
+are no line/column positions to report; each SARIF result instead points
+its `physicalLocation` at the config file the server was declared in and
+names the server (and tool, if tool-scoped) as `logicalLocations`. Scoped
+to the single-config `check`/`fix` path only in this pass — `check-all`'s
+`FleetReport` has no SARIF formatter yet (same gap JUnit had until fleet
+support was added later); left as a follow-up rather than rushed in
+alongside everything else.
 
