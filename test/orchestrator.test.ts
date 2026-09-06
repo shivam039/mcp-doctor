@@ -6,6 +6,7 @@ import {
   securityUntrustedRemoteCheck,
   securityOverbroadPermissionsCheck,
   securityPromptInjectionRiskCheck,
+  securityHiddenUnicodeTagsCheck,
   qualityToolNamesCheck,
   qualityToolDescriptionsCheck,
   qualityToolOutputSchemaCheck,
@@ -94,10 +95,23 @@ describe('quality score coverage under custom check sets (end-to-end via runChec
   it('reports security coverage as covered with the full security-only check set', async () => {
     registerConnectImpl(async () => validConnection);
     const report = await runChecks(singleServerConfig, {
-      checks: [securityUntrustedRemoteCheck, securityOverbroadPermissionsCheck, securityPromptInjectionRiskCheck],
+      checks: [
+        securityUntrustedRemoteCheck,
+        securityOverbroadPermissionsCheck,
+        securityPromptInjectionRiskCheck,
+        securityHiddenUnicodeTagsCheck,
+      ],
     });
     expect(report.quality?.coverage.security).toBe('covered');
     expect(report.quality?.coverage.schema).toBe('not-covered');
+  });
+
+  it('reports security coverage as partial when only some of the security checks run', async () => {
+    registerConnectImpl(async () => validConnection);
+    const report = await runChecks(singleServerConfig, {
+      checks: [securityUntrustedRemoteCheck, securityOverbroadPermissionsCheck, securityPromptInjectionRiskCheck],
+    });
+    expect(report.quality?.coverage.security).toBe('partial');
   });
 
   it('reports usability coverage as covered with the full quality-only check set', async () => {

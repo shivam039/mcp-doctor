@@ -3,8 +3,16 @@ import readline from 'node:readline';
 const mode = process.argv[2] ?? 'normal';
 const input = readline.createInterface({ input: process.stdin });
 
+const RESOURCES_PROMPTS_MODES = [
+  'with-resources-prompts',
+  'broken-resources',
+  'broken-prompts',
+  'with-resource-templates',
+  'broken-resource-templates',
+];
+
 const capabilitiesFor = (mode) => {
-  if (mode === 'with-resources-prompts' || mode === 'broken-resources' || mode === 'broken-prompts') {
+  if (RESOURCES_PROMPTS_MODES.includes(mode)) {
     return { tools: {}, resources: {}, prompts: {} };
   }
   return { tools: {} };
@@ -63,6 +71,46 @@ input.on('line', (line) => {
     }
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } else if (request.method === 'tools/list') {
+    if (mode === 'paginated-tools') {
+      const cursor = request.params?.cursor;
+      if (!cursor) {
+        process.stdout.write(`${JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: { tools: [{ name: 'echo', description: 'Echoes input', inputSchema: { type: 'object' } }], nextCursor: 'page2' },
+        })}\n`);
+      } else if (cursor === 'page2') {
+        process.stdout.write(`${JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: { tools: [{ name: 'second-tool', description: 'The second page', inputSchema: { type: 'object' } }] },
+        })}\n`);
+      }
+      return;
+    }
+    if (mode === 'paginated-tools-broken-page-2') {
+      const cursor = request.params?.cursor;
+      if (!cursor) {
+        process.stdout.write(`${JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: { tools: [{ name: 'echo', description: 'Echoes input', inputSchema: { type: 'object' } }], nextCursor: 'page2' },
+        })}\n`);
+      } else {
+        // Malformed page 2 (no tools array) — exercises the mid-pagination failure path.
+        process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`);
+      }
+      return;
+    }
+    if (mode === 'paginated-tools-infinite') {
+      // Never stops returning a nextCursor — exercises the runaway-pagination guard.
+      process.stdout.write(`${JSON.stringify({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: { tools: [{ name: 'echo', description: 'Echoes input', inputSchema: { type: 'object' } }], nextCursor: 'again' },
+      })}\n`);
+      return;
+    }
     process.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: request.id,
@@ -83,6 +131,32 @@ input.on('line', (line) => {
           { uri: 'file:///tmp/notes.txt', name: 'notes', description: 'Scratch notes', mimeType: 'text/plain' },
         ],
       },
+    })}\n`);
+  } else if (request.method === 'resources/templates/list') {
+    if (mode === 'with-resource-templates') {
+      process.stdout.write(`${JSON.stringify({
+        jsonrpc: '2.0',
+        id: request.id,
+        result: {
+          resourceTemplates: [
+            { uriTemplate: 'file:///tmp/{name}.txt', name: 'scratch-file', description: 'A scratch file by name.' },
+          ],
+        },
+      })}\n`);
+      return;
+    }
+    if (mode === 'broken-resource-templates') {
+      // Declares resources capability but returns a malformed templates
+      // response (no resourceTemplates array) — exercises the soft-fail path.
+      process.stdout.write(`${JSON.stringify({ jsonrpc: '2.0', id: request.id, result: {} })}\n`);
+      return;
+    }
+    // Realistic default: most servers that support resources/list never
+    // implement the optional resources/templates/list RPC at all.
+    process.stdout.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: request.id,
+      error: { code: -32601, message: 'Method not found' },
     })}\n`);
   } else if (request.method === 'prompts/list') {
     if (mode === 'broken-prompts') {

@@ -6,6 +6,7 @@ export { sampleCallSimulationCheck } from './sample-call-simulation.js';
 export { securityUntrustedRemoteCheck } from './security-untrusted-remote.js';
 export { securityOverbroadPermissionsCheck } from './security-overbroad-permissions.js';
 export { securityPromptInjectionRiskCheck } from './security-prompt-injection-risk.js';
+export { securityHiddenUnicodeTagsCheck } from './security-hidden-unicode-tags.js';
 export { qualityToolNamesCheck } from './quality-tool-names.js';
 export { qualityToolDescriptionsCheck } from './quality-tool-descriptions.js';
 export { qualityToolOutputSchemaCheck } from './quality-tool-output-schema.js';
@@ -23,6 +24,7 @@ import { sampleCallSimulationCheck } from './sample-call-simulation.js';
 import { securityUntrustedRemoteCheck } from './security-untrusted-remote.js';
 import { securityOverbroadPermissionsCheck } from './security-overbroad-permissions.js';
 import { securityPromptInjectionRiskCheck } from './security-prompt-injection-risk.js';
+import { securityHiddenUnicodeTagsCheck } from './security-hidden-unicode-tags.js';
 import { qualityToolNamesCheck } from './quality-tool-names.js';
 import { qualityToolDescriptionsCheck } from './quality-tool-descriptions.js';
 import { qualityToolOutputSchemaCheck } from './quality-tool-output-schema.js';
@@ -42,6 +44,7 @@ export const allChecks = [
   securityUntrustedRemoteCheck,
   securityOverbroadPermissionsCheck,
   securityPromptInjectionRiskCheck,
+  securityHiddenUnicodeTagsCheck,
   qualityToolNamesCheck,
   qualityToolDescriptionsCheck,
   qualityToolOutputSchemaCheck,

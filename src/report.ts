@@ -80,11 +80,15 @@ export function formatReportHuman(
     if (conn.tools) {
       const parts = [`${conn.tools.length} tool(s)`];
       if (conn.resources) parts.push(`${conn.resources.length} resource(s)`);
+      if (conn.resourceTemplates) parts.push(`${conn.resourceTemplates.length} resource template(s)`);
       if (conn.prompts) parts.push(`${conn.prompts.length} prompt(s)`);
       lines.push(`  Capabilities: ${parts.join(', ')}`);
     }
     if (conn.capabilityErrors?.resources) {
       lines.push(`  resources/list: ${conn.capabilityErrors.resources}`);
+    }
+    if (conn.capabilityErrors?.resourceTemplates) {
+      lines.push(`  resources/templates/list: ${conn.capabilityErrors.resourceTemplates}`);
     }
     if (conn.capabilityErrors?.prompts) {
       lines.push(`  prompts/list: ${conn.capabilityErrors.prompts}`);

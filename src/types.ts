@@ -53,6 +53,22 @@ export interface MCPResourceDefinition {
   size?: number;
 }
 
+/** MCP's `ResourceTemplate` (spec 2025-06-18+): a URI template (RFC 6570) a
+ * client can fill in to construct concrete resource URIs — a distinct RPC
+ * (`resources/templates/list`) from `resources/list`'s concrete instances,
+ * but governed by the same `capabilities.resources` flag. Common for
+ * servers that expose parameterized resources (e.g. `file://{path}`)
+ * rather than (or in addition to) a fixed list. */
+export interface MCPResourceTemplate {
+  uriTemplate: string;
+  /** Required by the spec's `BaseMetadata` — kept optional here for the
+   * same reason as `MCPResourceDefinition.name`. */
+  name?: string;
+  title?: string;
+  description?: string;
+  mimeType?: string;
+}
+
 export interface MCPPromptArgument {
   /** Required by the MCP spec's `PromptArgument` (extends `BaseMetadata`) —
    * kept optional here for the same reason as `MCPResourceDefinition.name`. */
@@ -90,11 +106,18 @@ export interface MCPConnection {
   tools?: MCPToolDefinition[];
   /** Populated only if the server's `initialize` response declared a `resources` capability. */
   resources?: MCPResourceDefinition[];
+  /** Populated only if the server's `initialize` response declared a `resources` capability
+   * (same flag as `resources` — the spec has no separate templates sub-capability) AND the
+   * server actually returned any templates. `resources/templates/list` is optional in
+   * practice: many servers only expose concrete resources, so an empty/absent result here
+   * is normal, not an error. */
+  resourceTemplates?: MCPResourceTemplate[];
   /** Populated only if the server's `initialize` response declared a `prompts` capability. */
   prompts?: MCPPromptDefinition[];
-  /** Best-effort failures from optional capability inspection (resources/prompts) — these
-   * never fail the overall connection, since `tools` is the one capability mcp-medic requires. */
-  capabilityErrors?: { resources?: string; prompts?: string };
+  /** Best-effort failures from optional capability inspection (resources/prompts/resource
+   * templates) — these never fail the overall connection, since `tools` is the one
+   * capability mcp-medic requires. */
+  capabilityErrors?: { resources?: string; resourceTemplates?: string; prompts?: string };
   /** Set once an `initialize` response was received, even if negotiation was incompatible or a later stage failed. */
   protocolVersion?: ProtocolVersionInfo;
   serverInfo?: MCPServerInfo;
