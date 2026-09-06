@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,11 @@ const rootDir = resolve(__dirname, '..');
 const pkgPath = resolve(rootDir, 'package.json');
 
 function run(cmd, opts = {}) {
-  return execSync(cmd, { cwd: rootDir, encoding: 'utf-8', ...opts }).trim();
+  try {
+    return execSync(cmd, { cwd: rootDir, encoding: 'utf-8', stdio: 'pipe', ...opts }).trim();
+  } catch {
+    return '';
+  }
 }
 
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
@@ -18,19 +22,14 @@ const currentLocalVersion = pkg.version;
 
 console.log(`[auto-release] Package: ${pkgName}, local version: ${currentLocalVersion}`);
 
-let npmVersion = '';
-try {
-  npmVersion = run(`npm view ${pkgName} version 2>/dev/null || echo ""`);
-} catch {
-  npmVersion = '';
-}
+let npmVersion = run(`npm view ${pkgName} version 2>/dev/null`) || '';
 
 console.log(`[auto-release] Published version on npm: ${npmVersion || '(none)'}`);
 
 let targetVersion = currentLocalVersion;
 
 function parseSemver(v) {
-  const [major, minor, patch] = v.split('.').map((x) => parseInt(x, 10) || 0);
+  const [major, minor, patch] = (v || '0.0.0').split('.').map((x) => parseInt(x, 10) || 0);
   return { major, minor, patch };
 }
 
@@ -47,17 +46,12 @@ function isHigher(v1, v2) {
 }
 
 if (!npmVersion || isHigher(currentLocalVersion, npmVersion)) {
-  console.log(`[auto-release] Local version ${currentLocalVersion} is already newer than npm ${npmVersion || '0.0.0'}.`);
+  console.log(`[auto-release] Local version ${currentLocalVersion} is newer than npm (${npmVersion || 'none'}).`);
   targetVersion = currentLocalVersion;
 } else {
   // Local version equals or is behind npm version -> automatically bump
   const baseSemver = parseSemver(npmVersion);
-  let lastCommitMsg = '';
-  try {
-    lastCommitMsg = run('git log -1 --pretty=%B');
-  } catch {
-    lastCommitMsg = '';
-  }
+  let lastCommitMsg = run('git log -1 --pretty=%B') || '';
 
   console.log(`[auto-release] Analyzing last commit message: "${lastCommitMsg}"`);
 
@@ -78,38 +72,31 @@ if (!npmVersion || isHigher(currentLocalVersion, npmVersion)) {
   pkg.version = targetVersion;
   writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 
-  // Update package-lock.json if present
   try {
-    run('npm i --package-lock-only');
-  } catch (err) {
-    console.warn(`[auto-release] Could not update package-lock.json: ${err.message}`);
-  }
+    execSync('npm i --package-lock-only', { cwd: rootDir, stdio: 'ignore' });
+  } catch {}
 
-  // Commit version bump if in git
   try {
-    run('git config user.name "github-actions[bot]"');
-    run('git config user.email "github-actions[bot]@users.noreply.github.com"');
-    run(`git add package.json package-lock.json`);
-    run(`git commit -m "chore(release): v${targetVersion} [skip ci]"`);
-    run('git push origin HEAD:main');
+    execSync('git config user.name "github-actions[bot]"', { cwd: rootDir, stdio: 'ignore' });
+    execSync('git config user.email "github-actions[bot]@users.noreply.github.com"', { cwd: rootDir, stdio: 'ignore' });
+    execSync('git add package.json package-lock.json', { cwd: rootDir, stdio: 'ignore' });
+    execSync(`git commit -m "chore(release): v${targetVersion} [skip ci]"`, { cwd: rootDir, stdio: 'ignore' });
+    execSync('git push origin HEAD:main', { cwd: rootDir, stdio: 'ignore' });
     console.log(`[auto-release] Pushed version bump v${targetVersion} to main.`);
   } catch (err) {
-    console.warn(`[auto-release] Git commit/push step skipped or failed: ${err.message}`);
+    console.warn(`[auto-release] Git commit/push note: ${err.message}`);
   }
 }
 
 // Tag git release
 try {
-  run(`git tag -a v${targetVersion} -m "Release v${targetVersion}"`);
-  run(`git push origin v${targetVersion}`);
+  execSync(`git tag -a v${targetVersion} -m "Release v${targetVersion}"`, { cwd: rootDir, stdio: 'ignore' });
+  execSync(`git push origin v${targetVersion}`, { cwd: rootDir, stdio: 'ignore' });
   console.log(`[auto-release] Created and pushed tag v${targetVersion}`);
 } catch (err) {
-  console.log(`[auto-release] Tag v${targetVersion} might already exist: ${err.message}`);
+  console.log(`[auto-release] Note on tag v${targetVersion}: ${err.message}`);
 }
 
-console.log(`::set-output name=version::${targetVersion}`);
-// For GitHub Actions environment files
 if (process.env.GITHUB_OUTPUT) {
-  const fs = await import('node:fs');
-  fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${targetVersion}\n`);
+  appendFileSync(process.env.GITHUB_OUTPUT, `version=${targetVersion}\n`);
 }

@@ -38,7 +38,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
       - name: Install dependencies
@@ -67,17 +66,19 @@ jobs:
         run: |
           VERSION="${{ steps.release.outputs.version }}"
           if [ -n "$VERSION" ]; then
-            gh release create "v$VERSION" --title "v$VERSION" --generate-notes || echo "Release already exists"
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes || echo "Release tag already exists"
           fi
 
       - name: Publish to NPM (Dry Run)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: echo "Dry run completed successfully. Package is ready for publication."
 
-      - name: Publish to NPM (Trusted Publisher OIDC)
+      - name: Publish to NPM
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |
-          if [ -n "${{ secrets.NPM_TOKEN }}" ]; then
-            npm config set //registry.npmjs.org/:_authToken "${{ secrets.NPM_TOKEN }}"
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
           fi
           npm publish --access public --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
