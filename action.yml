@@ -7,7 +7,7 @@ branding:
 
 inputs:
   config-path:
-    description: 'Path to MCP configuration file (defaults to auto-discovery)'
+    description: 'Path to MCP configuration file (defaults to auto-discovery across project/.mcp.json)'
     required: false
     default: ''
   fail-on:
@@ -18,6 +18,22 @@ inputs:
     description: 'Display actionable fix suggestions under diagnostics'
     required: false
     default: 'true'
+  policy-path:
+    description: 'Path to organizational policy JSON (.mcp-medic-policy.json)'
+    required: false
+    default: ''
+  export-junit:
+    description: 'Path to export JUnit XML report for CI test dashboards'
+    required: false
+    default: ''
+  export-json:
+    description: 'Path to export JSON diagnostics report'
+    required: false
+    default: ''
+  snapshot:
+    description: 'Path to baseline snapshot JSON to gate on regressions only'
+    required: false
+    default: ''
   timeout:
     description: 'Handshake timeout per server in milliseconds'
     required: false
@@ -47,6 +63,18 @@ runs:
         fi
         if [ -n "${{ inputs.fail-on }}" ]; then
           ARGS="$ARGS --fail-on ${{ inputs.fail-on }}"
+        fi
+        if [ -n "${{ inputs.policy-path }}" ]; then
+          ARGS="$ARGS --policy ${{ inputs.policy-path }}"
+        fi
+        if [ -n "${{ inputs.export-junit }}" ]; then
+          ARGS="$ARGS --export-junit ${{ inputs.export-junit }}"
+        fi
+        if [ -n "${{ inputs.export-json }}" ]; then
+          ARGS="$ARGS --export-json ${{ inputs.export-json }}"
+        fi
+        if [ -n "${{ inputs.snapshot }}" ]; then
+          ARGS="$ARGS --snapshot ${{ inputs.snapshot }}"
         fi
         if [ -n "${{ inputs.timeout }}" ]; then
           ARGS="$ARGS --timeout ${{ inputs.timeout }}"
