@@ -1,0 +1,20 @@
+{
+  "servers": [
+    {
+      "name": "fs",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+    },
+    {
+      "name": "events",
+      "transport": "sse",
+      "url": "https://example.com/mcp/sse"
+    },
+    {
+      "name": "api",
+      "transport": "http",
+      "url": "https://example.com/mcp"
+    }
+  ]
+}

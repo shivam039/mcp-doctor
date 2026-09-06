@@ -11,7 +11,7 @@ Format: `[owner] area — status — last updated (UTC date)`
 - [core] CONTRACT.md types + orchestrator skeleton — DONE — see HANDOFF/claude.md
 - [codex] protocol/handshake layer — DONE — see HANDOFF/codex.md
 - [jules] schema validation checks — DONE (5 checks + fixtures + test suites) — 2026-09-06
-- [antigravity] CLI + fixtures — NOT STARTED
+- [antigravity] CLI + fixtures + config-loader — DONE (works end-to-end against orchestrator) — see HANDOFF/antigravity.md
 
 ---
 
