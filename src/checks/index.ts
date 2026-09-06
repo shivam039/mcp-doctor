@@ -13,6 +13,7 @@ export { qualityToolAnnotationsCheck } from './quality-tool-annotations.js';
 export { qualityToolSurfaceCheck, createToolSurfaceCheck, DEFAULT_MAX_TOOLS_WARNING_THRESHOLD } from './quality-tool-surface.js';
 export { qualityResourcesCheck } from './quality-resources.js';
 export { qualityPromptsCheck } from './quality-prompts.js';
+export { protocolConnectionHealthCheck } from './protocol-connection-health.js';
 
 import { malformedSchemaCheck } from './malformed-schema.js';
 import { missingRequiredFieldsCheck } from './missing-required-fields.js';
@@ -29,8 +30,10 @@ import { qualityToolAnnotationsCheck } from './quality-tool-annotations.js';
 import { qualityToolSurfaceCheck } from './quality-tool-surface.js';
 import { qualityResourcesCheck } from './quality-resources.js';
 import { qualityPromptsCheck } from './quality-prompts.js';
+import { protocolConnectionHealthCheck } from './protocol-connection-health.js';
 
 export const allChecks = [
+  protocolConnectionHealthCheck,
   malformedSchemaCheck,
   missingRequiredFieldsCheck,
   typeMismatchCheck,

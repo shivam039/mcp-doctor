@@ -198,8 +198,18 @@ export interface QualityScoreBreakdown {
   deductions: QualityDeduction[];               // only points > 0, most-costly first
 }
 
+// 'covered': every built-in check for a dimension ran. 'partial': some but
+// not all ran (or only a custom/unmapped check ran). 'not-covered': none ran.
+export type CoverageStatus = 'covered' | 'partial' | 'not-covered';
+export type QualityCoverage = Record<QualityDimension, CoverageStatus>;
+
 export interface ReportQualityScore extends QualityScoreBreakdown {
   perServer: Record<string, QualityScoreBreakdown>; // a server that never connected has no entry
+  coverage: QualityCoverage;      // derived from which checks actually ran — never assume 100 means "fully evaluated"
+  coveragePercent: number;        // 0-100: covered=1, partial=0.5, not-covered=0, averaged over the 5 dimensions
+  scoredServers: string[];        // servers actually included in this score
+  unscoredServers: string[];      // servers that failed to connect — never silently dropped from view
+  disclaimer: string;             // "this is not a certification" — see src/quality-score.ts
 }
 
 // ---- Check plugin interface ----
@@ -261,6 +271,7 @@ export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunR
 | SARIF 2.1.0 export (`--export-sarif`, single-config `check`/`fix` path only — fleet/`check-all` has no SARIF formatter yet) | **core** | `src/sarif.ts` |
 | Resources/prompts capability inspection (passive `resources/list`/`prompts/list`, only when declared in `initialize`) | **Codex** | `src/protocol/connect.ts` |
 | MCP Quality Engine: tool/resource/prompt quality checks (naming, descriptions, output schema, annotations, tool-surface bloat), diagnostic category inference, and the deterministic MCP Quality Score | **core** | `src/checks/quality-*.ts`, `src/diagnostics.ts`, `src/quality-score.ts` |
+| MCP Quality Engine v1.1 (trust hardening): protocol-version-aware quality rules, visible `protocol.*` connection-health diagnostics (replacing hidden score deductions), score coverage/disclaimer/unscored-servers, coverage-aware `quality.minimumScore` policy gate | **core** | `src/protocol/quality-rules.ts`, `src/checks/protocol-connection-health.ts`, `src/quality-score.ts` |
 
 **Merge order:** core types → protocol layer → checks → CLI. Checks need a
 real or mocked `MCPConnection`; CLI needs checks; nobody should block on

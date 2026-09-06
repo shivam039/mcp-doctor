@@ -353,3 +353,122 @@ build/`npm pack --dry-run` all clean; manually smoke-tested `score`,
 `check --json` (quality field), and the `quality.minimumScore` policy gate
 end-to-end against a real local stdio fixture server.
 
+## 2026-09-06 — [core] MCP Quality Engine v1.1 — trust & coverage hardening
+Decision: audited the v1.0 Quality Engine against 12 explicit correctness
+requirements and made 5 targeted, additive changes — no revert, no wholesale
+rewrite of the scoring model or dimension weights.
+
+**1. Protocol-version-aware tool-name rules** (`src/protocol/quality-rules.ts`,
+new): `getProtocolQualityRules(version)` returns `{ toolName: { maxLength?,
+pattern? } }`. Every currently-supported MCP version (2024-11-05 through
+2025-11-25) defines no hard length/pattern constraint on `Tool.name` — this
+module exists for the abstraction, not because any two supported versions
+differ today. `quality-tool-names.ts`'s `evaluateToolName(name, rules)` is
+now a pure, exported function consulting these rules: if `rules.maxLength`/
+`.pattern` is defined AND violated, the finding is `category: 'protocol'`,
+`severity: 'error'` (a real spec violation for that version); otherwise the
+existing style/quality warnings apply unchanged. Since no supported version
+defines a constraint today, existing behavior for all 9 pre-existing tests
+was verified unchanged; new tests inject a synthetic `ToolNameProtocolRules`
+directly (bypassing the need for a real future protocol version to exist)
+to prove the branching logic. Reason: the milestone explicitly required
+never mislabeling a style preference as a protocol violation, and building
+this so a *future* version that does add a constraint needs one new rules
+entry, not a rewrite of every quality check.
+
+**2. Removed hidden score deductions** (`src/checks/protocol-connection-
+health.ts`, new; `src/quality-score.ts`, `protocolConnectionDeductions()`
+deleted): previously `quality-score.ts` deducted points directly from
+`MCPConnection.capabilityErrors`/`.protocolVersion`/`.serverInfo` with NO
+corresponding `DiagnosticResult` — a developer looking at "why did my
+protocol score drop" found nothing in `diagnostics` or `--json` explaining
+it. `protocolConnectionHealthCheck` (id `protocol.connection-health`) now
+emits real diagnostics for the same three conditions
+(`protocol.version-downgrade`, `protocol.missing-server-info`,
+`protocol.capability-error`) and is added to `allChecks` (now 16 checks,
+was 15). `computeConnectionQualityScore` no longer reads `MCPConnection`
+metadata directly at all — purely `diagnostics -> dimension -> score`.
+Consequence (intentional, documented, not a bug): exact point values
+changed, since these now flow through the same generic per-severity/
+per-checkId-cap formula as every other diagnostic instead of ad-hoc
+hardcoded amounts. `protocol.capability-error` was reclassified from an
+implicit flat -15 to severity `'error'` (8pts, cap 25) — a server declaring
+a capability it can't actually serve is a real conformance defect, more
+severe than a style nit. `protocol.version-downgrade` and `.missing-server-
+info` are `'info'` (1pt, cap 5, was an implicit flat -5 each) — informational
+findings should cost little, per requirement 6 below.
+
+**3. Score coverage** (`ReportQualityScore.coverage`/`coveragePercent`/
+`scoredServers`/`unscoredServers`, additive to `types.ts`;
+`computeQualityCoverage()` in `quality-score.ts`): coverage is derived from
+comparing the *executed* check list (`RunOptions.checks`, now threaded from
+`orchestrator.ts` and `cli.ts`'s post-snapshot recompute into
+`computeReportQualityScore(report, executedChecks)`) against `allChecks`
+grouped by dimension (via the same `inferDiagnosticCategory` used for
+scoring — no new per-check metadata field needed). Per dimension:
+`'covered'` if every built-in check for it ran, `'partial'` if some ran (or
+only an unmapped custom check contributed), `'not-covered'` if none ran.
+`reliability` is unconditionally `'covered'` — its signal (did the
+connection succeed) isn't produced by any optional `Check`, it's inherent
+to attempting a connection at all. `QualityScoreBreakdown` (the per-server
+shape) is UNCHANGED — coverage is a report-level concept (the same checks
+ran for every server in one `runChecks()` call), so nothing that destructures
+`perServer[name]` needed to change. Reason: the milestone's core complaint —
+"security: 100/100 looks like a full audit even if the caller only ran
+schema checks" — is now impossible to misread; `coveragePercent < 100`
+or any `not-covered`/`partial` entry says exactly which dimensions weren't
+actually evaluated. An unrecognized/custom check's checkId still falls back
+to `'quality'`→usability (unchanged existing behavior from v1.0's
+`inferDiagnosticCategory`, deliberately NOT changed to "ignore unmapped
+checks" — see `DiagnosticResult.category` fallback rationale in the
+original Quality Engine entry above); coverage now correctly reflects that
+as `'partial'` usability coverage rather than pretending it's `'covered'`.
+
+**4. Semantic honesty**: `QUALITY_SCORE_DISCLAIMER` (a single exported
+string constant) is now part of `ReportQualityScore` and printed once
+(never per-server, to stay concise) in the human report's quality section:
+"This score reflects issues detectable by mcp-medic's passive inspection
+(see \"coverage\") — it is not a certification of the server's actual
+security, correctness, or behavior." `formatReportHuman()` also prints a
+`Coverage: N% (...)` line naming any non-`'covered'` dimensions, and a
+`Note: N server(s) could not be scored...` line when `unscoredServers` is
+non-empty — connection failures are report.connections-visible today, but
+this makes the omission from a fleet's aggregate score visible too, not
+just inferable from summary counts.
+
+**5. Coverage-aware `quality.minimumScore` gate** (`checkMinimumScorePolicy()`,
+new, exported from `quality-score.ts` as a pure function so it's unit-
+testable without a real CLI invocation or a restricted check set — `cli.ts`
+just calls it and pushes whatever it returns): a `minimumScore` policy now
+ALSO produces a `policy.partial-coverage-with-minimum-score` **warning**
+(never an error — doesn't change `--fail-on error`'s default exit code)
+whenever `coveragePercent < 100` or any server is unscored, alongside the
+existing `policy.minimum-quality-score` error when the score itself is too
+low. Reason: "a minimum-score check must not silently pass because only a
+subset of checks executed" — chose a warning over a hard failure because
+hard-failing an already-passing CI pipeline the moment coverage tracking
+shipped would be a surprising, disproportionate breaking change; a visible
+warning satisfies "never silent" without that risk. Note the CLI itself
+can't currently reach a `<100%` coverage state through normal usage (there's
+no `--only-checks` flag; `loadChecks()` always loads the full built-in set
+plus policy-derived checks) — the coverage-aware behavior is real and
+tested (`test/quality-score.test.ts`'s `checkMinimumScorePolicy` suite,
+plus `runChecks({ checks: [...] })` integration tests in
+`test/orchestrator.test.ts`), but is currently reachable only via the
+library API, not the CLI. Documented as a known limitation rather than
+adding a CLI flag not requested by this milestone.
+
+**Audited, found already-correct, NOT changed**: the 5 dimension weights
+(protocol 25/schema 20/usability 20/security 20/reliability 15 — unchanged
+per the explicit "do not arbitrarily change these weights" instruction);
+the per-checkId deduction caps (already prevent any single noisy checkId
+from dominating a dimension — verified with an explicit order-independence
+test and a 20-identical-warnings-capped-at-15 test, both passing
+unchanged); a single error's impact relative to a single info finding
+(verified strictly less via a new test, satisfying "informational findings
+should not unnecessarily reduce score" and "protocol errors should have
+stronger impact than stylistic recommendations" without changing constants).
+
+Test count: 239 → 283 (+44) in this pass. All pre-existing tests continue
+passing; typecheck/build/`npm pack --dry-run` clean.
+

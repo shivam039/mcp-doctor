@@ -1,4 +1,4 @@
-import type { QualityScoreBreakdown, RunReport } from './types.js';
+import type { QualityScoreBreakdown, ReportQualityScore, RunReport } from './types.js';
 
 export interface FormatReportOptions {
   showFixes?: boolean;
@@ -29,6 +29,28 @@ function formatScoreBlock(label: string, score: QualityScoreBreakdown): string[]
       lines.push(`    -${d.points} ${d.description}`);
     }
   }
+  return lines;
+}
+
+/** Printed once per report (not per-server) — coverage and the disclaimer
+ * are report-level facts, and repeating them per server would overwhelm
+ * the output for a multi-server fleet. */
+function formatCoverageAndDisclaimer(quality: ReportQualityScore): string[] {
+  const lines: string[] = [];
+  const gaps = Object.entries(quality.coverage).filter(([, status]) => status !== 'covered');
+  const coverageLine =
+    gaps.length === 0
+      ? `Coverage: ${quality.coveragePercent}% (all dimensions fully evaluated)`
+      : `Coverage: ${quality.coveragePercent}% (${gaps
+          .map(([dim, status]) => `${DIMENSION_LABELS[dim] ?? dim}: ${status}`)
+          .join(', ')})`;
+  lines.push(coverageLine);
+  if (quality.unscoredServers.length > 0) {
+    lines.push(
+      `Note: ${quality.unscoredServers.length} server(s) could not be scored (connection failed): ${quality.unscoredServers.join(', ')}`,
+    );
+  }
+  lines.push(quality.disclaimer);
   return lines;
 }
 
@@ -77,9 +99,13 @@ export function formatReportHuman(
     }
   }
 
-  if (options.showScore && report.quality && Object.keys(report.quality.perServer).length > 1) {
+  if (options.showScore && report.quality) {
+    if (Object.keys(report.quality.perServer).length > 1) {
+      lines.push('');
+      lines.push(...formatScoreBlock('OVERALL QUALITY (all servers)', report.quality));
+    }
     lines.push('');
-    lines.push(...formatScoreBlock('OVERALL QUALITY (all servers)', report.quality));
+    lines.push(...formatCoverageAndDisclaimer(report.quality));
   }
 
   if (report.diagnostics.length > 0) {

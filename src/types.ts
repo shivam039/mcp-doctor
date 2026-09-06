@@ -177,9 +177,29 @@ export interface QualityScoreBreakdown {
   deductions: QualityDeduction[];
 }
 
+/** Whether the checks that feed a dimension actually ran this time.
+ * 'covered': every built-in check for this dimension ran.
+ * 'partial': at least one check contributing to this dimension ran, but not all of them.
+ * 'not-covered': no check contributing to this dimension ran — a 100 in
+ * that dimension means "nothing flagged it," not "nothing wrong exists." */
+export type CoverageStatus = 'covered' | 'partial' | 'not-covered';
+
+export type QualityCoverage = Record<QualityDimension, CoverageStatus>;
+
 export interface ReportQualityScore extends QualityScoreBreakdown {
   /** Per-connected-server breakdown; a server that never connected has no entry (nothing to score). */
   perServer: Record<string, QualityScoreBreakdown>;
+  /** Per-dimension coverage, derived from which checks actually ran (`RunOptions.checks`) —
+   * never assume a dimension was fully evaluated just because it scored 100. */
+  coverage: QualityCoverage;
+  /** 0-100: 'covered' dimensions count as 1, 'partial' as 0.5, 'not-covered' as 0, averaged across all 5. */
+  coveragePercent: number;
+  /** Names of servers actually included in this score (connected + scored). */
+  scoredServers: string[];
+  /** Names of servers that could NOT be scored (failed to connect) — never silently dropped from view. */
+  unscoredServers: string[];
+  /** A short, load-bearing reminder of what this number does and doesn't mean — see src/quality-score.ts. */
+  disclaimer: string;
 }
 
 export interface RunReport {

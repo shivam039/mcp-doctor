@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { qualityToolNamesCheck } from '../../src/checks/quality-tool-names.js';
+import { qualityToolNamesCheck, evaluateToolName } from '../../src/checks/quality-tool-names.js';
 import { validConnection, emptyToolsConnection, undefinedToolsConnection } from '../fixtures/mock-connections.js';
 import type { MCPConnection } from '../../src/types.js';
 
@@ -79,5 +79,52 @@ describe('qualityToolNamesCheck (quality.tool-name)', () => {
     const results = qualityToolNamesCheck.run(brokenConnection);
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ checkId: 'quality.tool-name', severity: 'error' });
+  });
+
+  describe('protocol-version awareness (evaluateToolName)', () => {
+    it('treats an over-length name as a quality warning when no protocol rule defines a limit', () => {
+      const findings = evaluateToolName('a'.repeat(200), {});
+      expect(findings).toContainEqual(expect.objectContaining({ severity: 'warning', category: 'quality' }));
+      expect(findings.some((f) => f.category === 'protocol')).toBe(false);
+    });
+
+    it('treats an over-length name as a protocol violation (error) when a hard rule defines a limit', () => {
+      const findings = evaluateToolName('a'.repeat(50), { maxLength: 20 });
+      const protocolFinding = findings.find((f) => f.category === 'protocol');
+      expect(protocolFinding).toMatchObject({ severity: 'error', category: 'protocol' });
+      expect(protocolFinding?.message).toContain('protocol violation');
+    });
+
+    it('does not also raise the quality-length warning when the protocol violation already fired', () => {
+      const findings = evaluateToolName('a'.repeat(50), { maxLength: 20 });
+      expect(findings.filter((f) => f.message.includes('characters'))).toHaveLength(1);
+    });
+
+    it('treats a character-set issue as a quality warning with no pattern rule', () => {
+      const findings = evaluateToolName('bad name', {});
+      expect(findings).toEqual([]); // a single space is not flagged by hasInvalidCharacters
+    });
+
+    it('treats a name violating a hard pattern rule as a protocol violation (error)', () => {
+      const findings = evaluateToolName('bad name!', { pattern: /^[a-zA-Z0-9_-]+$/ });
+      const protocolFinding = findings.find((f) => f.category === 'protocol');
+      expect(protocolFinding).toMatchObject({ severity: 'error', category: 'protocol' });
+    });
+
+    it('never labels an empty name as a protocol violation, even with hard rules configured', () => {
+      const findings = evaluateToolName('', { maxLength: 5, pattern: /^x$/ });
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({ severity: 'error', category: 'quality' });
+    });
+
+    it('the full check plumbs the negotiated protocol version into evaluateToolName (no violation for any currently-supported version)', () => {
+      const results = qualityToolNamesCheck.run({
+        server: { name: 'srv', transport: 'stdio' },
+        status: 'connected',
+        protocolVersion: { requested: '2025-11-25', negotiated: '2025-11-25', compatible: true },
+        tools: [{ name: 'a'.repeat(200), description: 'd', inputSchema: {} }],
+      });
+      expect(results.every((r) => r.category !== 'protocol')).toBe(true);
+    });
   });
 });

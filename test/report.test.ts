@@ -129,4 +129,49 @@ describe('formatReportHuman', () => {
     multi.quality = computeReportQualityScore(multi);
     expect(formatReportHuman(multi, { showScore: true })).toContain('OVERALL QUALITY');
   });
+
+  it('shows the coverage percentage and disclaimer once, not per server', () => {
+    const report: RunReport = {
+      connections: [
+        { server: { name: 'a', transport: 'stdio' }, status: 'connected', tools: [] },
+        { server: { name: 'b', transport: 'stdio' }, status: 'connected', tools: [] },
+      ],
+      diagnostics: [],
+      summary: { servers: 2, connected: 2, failed: 0, errors: 0, warnings: 0 },
+    };
+    report.quality = computeReportQualityScore(report);
+
+    const output = formatReportHuman(report, { showScore: true });
+    expect(output).toContain('Coverage:');
+    expect(output.match(/Coverage:/g)).toHaveLength(1);
+    expect(output).toContain(report.quality!.disclaimer);
+    expect(output.split(report.quality!.disclaimer)).toHaveLength(2); // appears exactly once
+  });
+
+  it('names servers that could not be scored due to connection failure', () => {
+    const report: RunReport = {
+      connections: [
+        { server: { name: 'good', transport: 'stdio' }, status: 'connected', tools: [] },
+        { server: { name: 'broken', transport: 'stdio' }, status: 'failed', error: { stage: 'spawn', message: 'x' } },
+      ],
+      diagnostics: [],
+      summary: { servers: 2, connected: 1, failed: 1, errors: 0, warnings: 0 },
+    };
+    report.quality = computeReportQualityScore(report);
+
+    const output = formatReportHuman(report, { showScore: true });
+    expect(output).toContain('could not be scored');
+    expect(output).toContain('broken');
+  });
+
+  it('lists which dimensions have incomplete coverage when a partial check set ran', () => {
+    const report: RunReport = {
+      connections: [{ server: { name: 'srv', transport: 'stdio' }, status: 'connected', tools: [] }],
+      diagnostics: [],
+      summary: { servers: 1, connected: 1, failed: 0, errors: 0, warnings: 0 },
+    };
+    report.quality = computeReportQualityScore(report, []); // empty check set
+    const output = formatReportHuman(report, { showScore: true });
+    expect(output).toContain('not-covered');
+  });
 });

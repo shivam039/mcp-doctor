@@ -1,11 +1,8 @@
 import type { Check, MCPConnection, DiagnosticResult } from '../types.js';
+import { getProtocolQualityRules, type ToolNameProtocolRules } from '../protocol/quality-rules.js';
 
-/** MCP's `Tool.name` (from `BaseMetadata`) has no documented pattern or
- * length constraint in the spec — so none of these are "protocol
- * violations" in the strict sense. Empty and duplicate names are still
- * treated as errors here because a tool a client cannot reference or
- * distinguish is functionally broken, not merely unstylish; everything
- * else is a warning. */
+/** Ecosystem recommendation, not a protocol constraint — see the module-level
+ * note on `evaluateToolName` for the A/B/C distinction this check makes. */
 const MAX_REASONABLE_NAME_LENGTH = 128;
 
 /** Conservative, curated list — exact (case-insensitive) matches only, to
@@ -36,9 +33,100 @@ function hasInvalidCharacters(name: string): boolean {
   return /[\t\n\r\x00-\x08\x0b\x0c\x0e-\x1f]/.test(name);
 }
 
+export interface ToolNameFinding {
+  severity: 'error' | 'warning';
+  /** 'protocol' only when `rules` itself defines a hard constraint the name
+   * violates; everything else is 'quality' (a recommendation, never a
+   * protocol violation) — see module doc. */
+  category: 'protocol' | 'quality';
+  message: string;
+  confidence?: 'low' | 'medium' | 'high';
+  suggestedFixDescription: string;
+}
+
+/**
+ * Pure evaluation of a single tool name, independent of the rest of the
+ * connection (duplicate detection is connection-wide and stays in `run()`).
+ * Exported so tests can inject a synthetic `ToolNameProtocolRules` (e.g. a
+ * hypothetical future protocol version with a real length/pattern
+ * constraint) without needing that version to actually exist yet — see
+ * src/protocol/quality-rules.ts.
+ *
+ * The A/B/C distinction this check makes:
+ *   A. PROTOCOL VIOLATION — only possible if `rules.maxLength`/`rules.pattern`
+ *      is defined by the negotiated version AND the name violates it.
+ *      Reported as category 'protocol', severity 'error'.
+ *   B. QUALITY WARNING — technically spec-valid, but likely to hurt agent
+ *      usability (too long by convention, odd characters, ambiguous name).
+ *      Reported as category 'quality', severity 'warning'.
+ *   C. Empty name is kept as a 'quality' error (not 'protocol') — no
+ *      supported version's spec actually forbids an empty string, but a
+ *      tool a client can't reference or distinguish is functionally
+ *      broken, which still deserves error severity without mislabeling it
+ *      a protocol violation.
+ */
+export function evaluateToolName(name: string, rules: ToolNameProtocolRules): ToolNameFinding[] {
+  const findings: ToolNameFinding[] = [];
+
+  if (name.trim() === '') {
+    findings.push({
+      severity: 'error',
+      category: 'quality',
+      message: 'Tool has an empty name — a client cannot reference or distinguish it.',
+      suggestedFixDescription: 'Give the tool a non-empty, descriptive name.',
+    });
+    return findings; // nothing else meaningful to evaluate on an empty name
+  }
+
+  if (rules.maxLength !== undefined && name.length > rules.maxLength) {
+    findings.push({
+      severity: 'error',
+      category: 'protocol',
+      message: `Tool name "${name.slice(0, 40)}..." is ${name.length} characters, exceeding the negotiated protocol's maximum of ${rules.maxLength} — this is a protocol violation, not a style recommendation.`,
+      suggestedFixDescription: `Shorten the tool name to ${rules.maxLength} characters or fewer to comply with the negotiated protocol version.`,
+    });
+  } else if (name.length > MAX_REASONABLE_NAME_LENGTH) {
+    findings.push({
+      severity: 'warning',
+      category: 'quality',
+      confidence: 'medium',
+      message: `Tool name "${name.slice(0, 40)}..." name is ${name.length} characters, exceeding the recommended ${MAX_REASONABLE_NAME_LENGTH}.`,
+      suggestedFixDescription: 'Shorten the tool name to something concise and memorable.',
+    });
+  }
+
+  if (rules.pattern && !rules.pattern.test(name)) {
+    findings.push({
+      severity: 'error',
+      category: 'protocol',
+      message: `Tool name "${name}" does not match the naming pattern required by the negotiated protocol version — this is a protocol violation, not a style recommendation.`,
+      suggestedFixDescription: 'Rename the tool to match the naming pattern required by the negotiated protocol version.',
+    });
+  } else if (hasInvalidCharacters(name)) {
+    findings.push({
+      severity: 'warning',
+      category: 'quality',
+      message: `Tool name "${JSON.stringify(name)}" contains whitespace/control characters that may break client tooling.`,
+      suggestedFixDescription: 'Use only plain, printable characters in tool names (letters, digits, -, _).',
+    });
+  }
+
+  if (name.length === 1 || PLACEHOLDER_NAMES.has(name.trim().toLowerCase())) {
+    findings.push({
+      severity: 'warning',
+      category: 'quality',
+      confidence: 'medium',
+      message: `Tool name "${name}" is ambiguous or looks like a placeholder — it doesn't communicate what the tool does.`,
+      suggestedFixDescription: 'Rename the tool to describe its action, e.g. "search_flights" instead of "tool".',
+    });
+  }
+
+  return findings;
+}
+
 export const qualityToolNamesCheck: Check = {
   id: 'quality.tool-name',
-  description: 'Flags empty, duplicate, overly long, or placeholder-looking tool names.',
+  description: 'Flags empty, duplicate, overly long, or placeholder-looking tool names; distinguishes protocol-version-defined violations from quality recommendations.',
   run(connection: MCPConnection): DiagnosticResult[] {
     const results: DiagnosticResult[] = [];
     try {
@@ -46,59 +134,23 @@ export const qualityToolNamesCheck: Check = {
         return results;
       }
 
+      const rules = getProtocolQualityRules(connection.protocolVersion?.negotiated).toolName;
       const seen = new Map<string, number>();
+
       for (const tool of connection.tools) {
         const name = tool.name;
         seen.set(name, (seen.get(name) ?? 0) + 1);
 
-        if (name.trim() === '') {
+        for (const finding of evaluateToolName(name, rules)) {
           results.push({
             checkId: 'quality.tool-name',
-            severity: 'error',
-            message: 'Tool has an empty name — a client cannot reference or distinguish it.',
+            severity: finding.severity,
+            message: finding.message,
             serverName: connection.server.name,
             toolName: name,
-            category: 'quality',
-            suggestedFix: { description: 'Give the tool a non-empty, descriptive name.' },
-          });
-          continue;
-        }
-
-        if (name.length > MAX_REASONABLE_NAME_LENGTH) {
-          results.push({
-            checkId: 'quality.tool-name',
-            severity: 'warning',
-            message: `Tool "${name.slice(0, 40)}..." name is ${name.length} characters, exceeding the recommended ${MAX_REASONABLE_NAME_LENGTH}.`,
-            serverName: connection.server.name,
-            toolName: name,
-            category: 'quality',
-            confidence: 'medium',
-            suggestedFix: { description: 'Shorten the tool name to something concise and memorable.' },
-          });
-        }
-
-        if (hasInvalidCharacters(name)) {
-          results.push({
-            checkId: 'quality.tool-name',
-            severity: 'warning',
-            message: `Tool name "${JSON.stringify(name)}" contains whitespace/control characters that may break client tooling.`,
-            serverName: connection.server.name,
-            toolName: name,
-            category: 'quality',
-            suggestedFix: { description: 'Use only plain, printable characters in tool names (letters, digits, -, _).' },
-          });
-        }
-
-        if (name.length === 1 || PLACEHOLDER_NAMES.has(name.trim().toLowerCase())) {
-          results.push({
-            checkId: 'quality.tool-name',
-            severity: 'warning',
-            message: `Tool name "${name}" is ambiguous or looks like a placeholder — it doesn't communicate what the tool does.`,
-            serverName: connection.server.name,
-            toolName: name,
-            category: 'quality',
-            confidence: 'medium',
-            suggestedFix: { description: 'Rename the tool to describe its action, e.g. "search_flights" instead of "tool".' },
+            category: finding.category,
+            ...(finding.confidence ? { confidence: finding.confidence } : {}),
+            suggestedFix: { description: finding.suggestedFixDescription },
           });
         }
       }

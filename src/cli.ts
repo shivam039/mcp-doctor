@@ -14,7 +14,7 @@ import { loadPolicy, createPolicyChecks, type MCPMedicPolicy } from './policy.js
 import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline } from './fleet.js';
 import { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
 import { formatReportSarif } from './sarif.js';
-import { computeReportQualityScore } from './quality-score.js';
+import { computeReportQualityScore, checkMinimumScorePolicy } from './quality-score.js';
 import type { Check, MCPConfig, RunReport, DiagnosticResult } from './types.js';
 import { SUPPORTED_PROTOCOL_VERSIONS } from './protocol/versions.js';
 import pc from 'picocolors';
@@ -301,7 +301,7 @@ async function executeCheck(
         // The quality score must reflect what's actually being reported —
         // recompute it against the post-baseline-filter diagnostics rather
         // than leaving the pre-filter score (computed by runChecks) stale.
-        report.quality = computeReportQualityScore(report);
+        report.quality = computeReportQualityScore(report, checks);
       } catch (err) {
         console.error(pc.yellow(`Warning: Could not read snapshot baseline: ${String(err)}`));
       }
@@ -313,16 +313,11 @@ async function executeCheck(
   // check's output, not a single connection), so it's enforced here instead.
   const policy = loadPolicy(args.policyPath);
   if (typeof policy?.quality?.minimumScore === 'number' && report.quality) {
-    if (report.quality.overall < policy.quality.minimumScore) {
-      report.diagnostics.push({
-        checkId: 'policy.minimum-quality-score',
-        severity: 'error',
-        message: `MCP quality score ${report.quality.overall} is below the policy minimum of ${policy.quality.minimumScore}.`,
-        serverName: config.servers.map((s) => s.name).join(', ') || '(no servers)',
-        category: 'configuration',
-      });
-      report.summary.errors += 1;
-    }
+    const allServerNames = config.servers.map((s) => s.name).join(', ') || '(no servers)';
+    const policyDiagnostics = checkMinimumScorePolicy(report.quality, policy.quality.minimumScore, allServerNames);
+    report.diagnostics.push(...policyDiagnostics);
+    report.summary.errors += policyDiagnostics.filter((d) => d.severity === 'error').length;
+    report.summary.warnings += policyDiagnostics.filter((d) => d.severity === 'warning').length;
   }
 
   // Handle update snapshot
