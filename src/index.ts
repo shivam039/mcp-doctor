@@ -32,4 +32,11 @@ export {
 } from './protocol/versions.js';
 export type { SupportedProtocolVersion, ProtocolVersionNegotiation } from './protocol/versions.js';
 export { isSecretKey, redactRecord, redactDeep, sanitizeServerConfig } from './redact.js';
+export { inferDiagnosticCategory, categoryOf } from './diagnostics.js';
+export {
+  computeConnectionQualityScore,
+  computeReportQualityScore,
+  QUALITY_DIMENSIONS,
+  QUALITY_DIMENSION_WEIGHTS,
+} from './quality-score.js';
 export * from './types.js';

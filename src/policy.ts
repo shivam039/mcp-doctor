@@ -6,7 +6,16 @@ export interface MCPMedicPolicy {
   bannedTransports?: TransportType[];
   allowedDomains?: string[];
   minDescriptionLength?: number;
+  /** @deprecated use `quality.requireToolDescriptions` — kept for backward compatibility, same effect. */
   requireToolDescriptions?: boolean;
+  quality?: {
+    /** Gate: `check`/`check-all` fail (an error diagnostic is added) if the computed MCP quality score falls below this. */
+    minimumScore?: number;
+    /** Overrides quality.tool-surface's default 100-tool warning threshold with an org-enforced error threshold. */
+    maxTools?: number;
+    /** Same effect as the top-level (deprecated) `requireToolDescriptions`; this nested form takes precedence if both are set. */
+    requireToolDescriptions?: boolean;
+  };
 }
 
 export type MCPDoctorPolicy = MCPMedicPolicy;
@@ -157,6 +166,77 @@ export function createPolicyChecks(policy: MCPDoctorPolicy): Check[] {
         } catch (err) {
           results.push({
             checkId: 'policy.description-length',
+            severity: 'error',
+            message: `policy check failed internally: ${err instanceof Error ? err.message : String(err)}`,
+            serverName: connection.server.name,
+          });
+        }
+        return results;
+      },
+    });
+  }
+
+  // 4. Require tool descriptions (nested quality.requireToolDescriptions takes
+  // precedence over the deprecated top-level field; either enables this).
+  const requireToolDescriptions = policy.quality?.requireToolDescriptions ?? policy.requireToolDescriptions;
+  if (requireToolDescriptions) {
+    checks.push({
+      id: 'policy.require-tool-descriptions',
+      description: 'Organizational policy: every tool must have a non-empty description.',
+      run(connection: MCPConnection): DiagnosticResult[] {
+        const results: DiagnosticResult[] = [];
+        try {
+          if (!connection.tools) return results;
+          for (const tool of connection.tools) {
+            if (!tool.description || tool.description.trim() === '') {
+              results.push({
+                checkId: 'policy.require-tool-descriptions',
+                severity: 'error',
+                message: `Tool "${tool.name}" has no description — organizational policy requires one.`,
+                serverName: connection.server.name,
+                toolName: tool.name,
+                category: 'configuration',
+                suggestedFix: { description: `Add a description to tool "${tool.name}".` },
+              });
+            }
+          }
+        } catch (err) {
+          results.push({
+            checkId: 'policy.require-tool-descriptions',
+            severity: 'error',
+            message: `policy check failed internally: ${err instanceof Error ? err.message : String(err)}`,
+            serverName: connection.server.name,
+          });
+        }
+        return results;
+      },
+    });
+  }
+
+  // 5. Max tools (org-enforced hard limit; distinct from quality.tool-surface's
+  // default 100-tool *warning*, which stays a recommendation, not a policy gate).
+  if (typeof policy.quality?.maxTools === 'number' && policy.quality.maxTools > 0) {
+    const maxTools = policy.quality.maxTools;
+    checks.push({
+      id: 'policy.max-tools',
+      description: `Organizational policy: a server may expose at most ${maxTools} tools.`,
+      run(connection: MCPConnection): DiagnosticResult[] {
+        const results: DiagnosticResult[] = [];
+        try {
+          const count = connection.tools?.length ?? 0;
+          if (count > maxTools) {
+            results.push({
+              checkId: 'policy.max-tools',
+              severity: 'error',
+              message: `Server exposes ${count} tools, exceeding organizational policy limit of ${maxTools}.`,
+              serverName: connection.server.name,
+              category: 'configuration',
+              details: { toolCount: count, maxTools },
+            });
+          }
+        } catch (err) {
+          results.push({
+            checkId: 'policy.max-tools',
             severity: 'error',
             message: `policy check failed internally: ${err instanceof Error ? err.message : String(err)}`,
             serverName: connection.server.name,

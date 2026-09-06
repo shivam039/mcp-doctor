@@ -7,6 +7,7 @@ import type {
   Check,
 } from './types.js';
 import { sanitizeServerConfig } from './redact.js';
+import { computeReportQualityScore } from './quality-score.js';
 
 async function connectStub(config: MCPConfig['servers'][number]): Promise<MCPConnection> {
   return {
@@ -88,10 +89,15 @@ export async function runChecks(
     warnings: diagnostics.filter((d) => d.severity === 'warning').length,
   };
 
-  return {
+  const report: RunReport = {
     configSource: config.sourcePath,
     connections,
     diagnostics,
     summary,
   };
+  const quality = computeReportQualityScore(report);
+  if (quality) {
+    report.quality = quality;
+  }
+  return report;
 }

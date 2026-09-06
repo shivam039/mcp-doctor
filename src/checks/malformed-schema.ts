@@ -55,6 +55,22 @@ export const malformedSchemaCheck: Check = {
               description: 'Add `"type": "object"` to the inputSchema.',
             },
           });
+        } else if (typeof schemaObj.type === 'string' && schemaObj.type !== 'object') {
+          // Per the MCP spec, a tool's inputSchema MUST describe an object
+          // (tool arguments are always passed as a JSON object) — a
+          // top-level type other than "object" is a protocol violation,
+          // not merely a style issue.
+          results.push({
+            checkId: 'schema.malformed',
+            severity: 'error',
+            message: `Tool "${tool.name}" inputSchema declares type "${schemaObj.type}", but the MCP spec requires tool inputSchema to be type "object".`,
+            serverName: connection.server.name,
+            toolName: tool.name,
+            details: { inputSchema: schema },
+            suggestedFix: {
+              description: 'Change inputSchema\'s top-level "type" to "object".',
+            },
+          });
         }
       }
     } catch (err) {

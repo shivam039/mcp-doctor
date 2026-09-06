@@ -9,11 +9,18 @@ import {
   securityUntrustedRemoteCheck,
   securityOverbroadPermissionsCheck,
   securityPromptInjectionRiskCheck,
+  qualityToolNamesCheck,
+  qualityToolDescriptionsCheck,
+  qualityToolOutputSchemaCheck,
+  qualityToolAnnotationsCheck,
+  qualityToolSurfaceCheck,
+  qualityResourcesCheck,
+  qualityPromptsCheck,
 } from '../../src/checks/index.js';
 
 describe('checks index', () => {
-  it('exports all 8 checks in allChecks', () => {
-    expect(allChecks).toHaveLength(8);
+  it('exports all 15 checks in allChecks', () => {
+    expect(allChecks).toHaveLength(15);
     expect(allChecks).toContain(malformedSchemaCheck);
     expect(allChecks).toContain(missingRequiredFieldsCheck);
     expect(allChecks).toContain(typeMismatchCheck);
@@ -22,6 +29,13 @@ describe('checks index', () => {
     expect(allChecks).toContain(securityUntrustedRemoteCheck);
     expect(allChecks).toContain(securityOverbroadPermissionsCheck);
     expect(allChecks).toContain(securityPromptInjectionRiskCheck);
+    expect(allChecks).toContain(qualityToolNamesCheck);
+    expect(allChecks).toContain(qualityToolDescriptionsCheck);
+    expect(allChecks).toContain(qualityToolOutputSchemaCheck);
+    expect(allChecks).toContain(qualityToolAnnotationsCheck);
+    expect(allChecks).toContain(qualityToolSurfaceCheck);
+    expect(allChecks).toContain(qualityResourcesCheck);
+    expect(allChecks).toContain(qualityPromptsCheck);
   });
 
   it('has valid check IDs for each check', () => {
@@ -35,6 +49,13 @@ describe('checks index', () => {
       'security.untrusted-remote',
       'security.overbroad-permissions',
       'security.prompt-injection-risk',
+      'quality.tool-name',
+      'quality.vague-description',
+      'quality.output-schema',
+      'quality.tool-annotations',
+      'quality.tool-surface',
+      'quality.resource',
+      'quality.prompt',
     ]);
   });
 

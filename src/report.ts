@@ -1,7 +1,35 @@
-import type { RunReport } from './types.js';
+import type { QualityScoreBreakdown, RunReport } from './types.js';
 
 export interface FormatReportOptions {
   showFixes?: boolean;
+  /** Include the MCP quality score section (Phase 7). Off by default so a
+   * plain `check` report stays short; `--score`/`score` turn it on. */
+  showScore?: boolean;
+}
+
+const DIMENSION_LABELS: Record<string, string> = {
+  protocol: 'Protocol',
+  schema: 'Schema',
+  usability: 'Agent usability',
+  security: 'Security',
+  reliability: 'Reliability',
+};
+
+function formatScoreBlock(label: string, score: QualityScoreBreakdown): string[] {
+  const lines: string[] = [];
+  lines.push(label);
+  for (const [dim, value] of Object.entries(score.dimensions)) {
+    const name = (DIMENSION_LABELS[dim] ?? dim).padEnd(17, ' ');
+    lines.push(`  ${name} ${String(value).padStart(3, ' ')}/100`);
+  }
+  lines.push(`  ${'MCP QUALITY SCORE'.padEnd(17, ' ')} ${String(score.overall).padStart(3, ' ')}/100`);
+  if (score.deductions.length > 0) {
+    lines.push('  Deductions:');
+    for (const d of score.deductions) {
+      lines.push(`    -${d.points} ${d.description}`);
+    }
+  }
+  return lines;
 }
 
 /** Human-readable plain text report formatter. */
@@ -42,6 +70,16 @@ export function formatReportHuman(
     if (conn.error) {
       lines.push(`  ${conn.error.stage}: ${conn.error.message}`);
     }
+    const perServerScore = options.showScore ? report.quality?.perServer[conn.server.name] : undefined;
+    if (perServerScore) {
+      lines.push('');
+      lines.push(...formatScoreBlock('QUALITY', perServerScore));
+    }
+  }
+
+  if (options.showScore && report.quality && Object.keys(report.quality.perServer).length > 1) {
+    lines.push('');
+    lines.push(...formatScoreBlock('OVERALL QUALITY (all servers)', report.quality));
   }
 
   if (report.diagnostics.length > 0) {

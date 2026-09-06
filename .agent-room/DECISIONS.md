@@ -245,3 +245,111 @@ handling, not a regression, but a real gap for servers with large catalogs.
 No new `Check` was added to validate resource URIs or prompt argument
 schemas — this pass is inspection/exposure only, not a new quality check.
 
+## 2026-09-06 — [core] MCP Quality Engine: types, 7 new checks, diagnostic taxonomy, deterministic score
+Decision: Implement the "MCP Quality Engine" milestone as scoped, deliberately
+skipping items the milestone brief itself flagged as overengineering risks
+(no LLM, no policy DSL, no dashboard). Concretely:
+
+**Types** (`src/types.ts`): added `MCPToolAnnotations`, extended
+`MCPToolDefinition` with `title`/`outputSchema`/`annotations`, extended
+`MCPResourceDefinition` with `title`/`size`, added `MCPPromptArgument` and
+changed `MCPPromptDefinition.arguments` from `unknown[]` to
+`MCPPromptArgument[]` (previously a `Array.isArray` narrowing of `unknown`
+silently widened to `any[]` and was never actually validated per-element —
+`src/protocol/connect.ts`'s `normalizePromptArgument()` now extracts each
+field defensively). All new Tool/Resource/Prompt fields were read from the
+actual MCP TypeScript schema (`schema/2025-06-18/schema.ts` in
+`github.com/modelcontextprotocol/modelcontextprotocol`), not memory —
+notably: `Resource.name` and `PromptArgument.name` are REQUIRED in the spec
+(both extend `BaseMetadata`), but kept optional in mcp-medic's types because
+a missing one is reported as a diagnostic, not a thrown parse error.
+
+**Diagnostic taxonomy** (`src/diagnostics.ts`): added optional
+`DiagnosticResult.category`/`confidence`/`documentationUrl`. Existing checks
+were NOT touched to set `category` — `inferDiagnosticCategory(checkId)` maps
+`schema.*`→schema, `security.*`→security, `policy.*`/`configuration.*`→
+configuration, etc., by prefix, so every pre-existing diagnostic participates
+in category-aware scoring without any risk of breaking its own tests.
+
+**7 new checks** (`src/checks/quality-*.ts`, all category `'quality'`
+unless noted): `quality.tool-name` (empty/duplicate names = error, since the
+spec sets no length/pattern constraint on `Tool.name` but an empty or
+duplicate name is functionally unusable, not merely unstylish; overly-long/
+ambiguous/placeholder names = warning), `quality.vague-description`
+(complements `schema.missing-description`, which only catches *absence* —
+this catches placeholder text, single-word, or name-as-description, and
+never touches an absent description), `quality.output-schema` (never flags
+absence — optional per spec — only structural malformedness),
+`quality.tool-annotations` (flags only internally-contradictory hint
+combinations, e.g. `readOnlyHint && destructiveHint`; never infers danger
+from a single hint, per the spec's own "hints, not guarantees" framing),
+`quality.tool-surface` (a factory, `createToolSurfaceCheck({maxTools})`, so
+policy can override the default 100-tool warning threshold without a second
+parallel check — mirrors `createPolicyChecks`'s existing pattern; also
+flags near-duplicate names and 3+ tools sharing one description),
+`quality.resource` and `quality.prompt` (inspect only what `resources/list`/
+`prompts/list` already returned — never call `resources/read`/`prompts/get`).
+`malformed-schema.ts` also gained one new error case: `inputSchema` with an
+explicit top-level `type` other than `"object"` is now flagged, since the
+spec requires tool inputSchema to describe an object — previously any
+present `type` string was accepted.
+
+**MCP Quality Score** (`src/quality-score.ts`, types in `types.ts` alongside
+`RunReport` since `RunReport.quality` is one of them): 5 dimensions per the
+brief's suggested weights (protocol 25%, schema 20%, usability 20%, security
+20%, reliability 15% — sum to 1, tested). Deductions are computed FROM
+diagnostics (`categoryOf(d)` → dimension, via a `configuration`/`quality`→
+`usability` fold since only 5 dimensions exist but 7 categories do), never
+as an independent judgment — directly implementing the brief's "avoid: check
+A says warning, score engine independently invents a second interpretation."
+Anti-double-counting: diagnostics are grouped by `(checkId, severity)`, and
+each group's contribution is capped (errors ≤25pts/checkId, warnings
+≤15pts/checkId, info ≤5pts/checkId) BEFORE being summed into a dimension —
+so 20 tools sharing one description problem cost at most 15 points, not 60;
+tested explicitly (`test/quality-score.test.ts`, "caps repeated diagnostics").
+Protocol dimension also reads connection-level facts diagnostics don't cover
+(capability-inspection failures, a version downgrade, missing `serverInfo`)
+since those aren't produced by a `Check`. Deterministic and pure: same
+report in → same score out, no I/O, no randomness (tested). `RunReport.quality`
+is computed once in `orchestrator.ts`'s `runChecks()`; `cli.ts` recomputes it
+after `--snapshot` baseline filtering so the score reflects what's actually
+shown, not the pre-filter diagnostics.
+JSON field naming note: the milestone brief's example used `quality.score`;
+this implementation uses `quality.overall` for consistency with the internal
+`QualityScoreBreakdown.overall` field used throughout `quality-score.ts` and
+`report.ts`. This is a new field with no backward-compatibility constraint,
+so the rename was a one-time naming choice, not a breaking change — documented
+here per the brief's "if changing the JSON schema, document the change."
+
+**CLI**: new `score` command (alias for `check` with `--score` forced on)
+and `--score` flag (opt-in — a plain `check` report stays short, matching
+"avoid turning it into an enormous wall of text"). `--json`/`--export-json`
+always include `quality` when available (no opt-in needed there — it's
+inert extra data for consumers who don't look at it).
+
+**Policy** (`src/policy.ts`): added `quality.minimumScore` (enforced in
+`cli.ts` after scoring — can't be a `Check`, since it needs the final score,
+not one connection), `quality.maxTools` (a new `policy.max-tools` check,
+error severity — distinct from `quality.tool-surface`'s default warning),
+and `quality.requireToolDescriptions` (implements the previously-declared-
+but-completely-unused top-level `requireToolDescriptions` field — a real,
+pre-existing dead field in the interface, now wired to a `policy.require-
+tool-descriptions` check; the nested `quality.*` form takes precedence if
+both are set, top-level kept for backward compatibility).
+
+Reason for scope cuts (things NOT done, on purpose): no `outputSchema`
+"missing where the server appears to rely on structured output" heuristic
+(the brief allowed this as informational/warning, but pattern-matching
+descriptions for "returns structured data" is speculative and low-confidence
+— skipped rather than guessed); no fleet-level (`check-all`) SARIF or
+quality-score aggregation beyond what `runFleetChecks`'s reuse of
+`runChecks` already gives for free per-file; no `resources/list`/
+`prompts/list` pagination; Reliability dimension is currently binary
+(connected vs not) since no `reliability.*` diagnostics exist yet — real
+signals (latency trend, retry/flake rate across runs) are a future
+milestone, not invented here to pad out the dimension.
+233/233+ tests passing (see PR for exact before/after counts); typecheck/
+build/`npm pack --dry-run` all clean; manually smoke-tested `score`,
+`check --json` (quality field), and the `quality.minimumScore` policy gate
+end-to-end against a real local stdio fixture server.
+

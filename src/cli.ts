@@ -10,16 +10,17 @@ import { discoverConfigFiles } from './discovery.js';
 import { watchFileDebounced } from './watch.js';
 import { resolveRegistryServer } from './registry.js';
 import { isConfigPatch, diffConfigPatch, applyConfigPatch, type ConfigPatch } from './fix.js';
-import { loadPolicy, createPolicyChecks } from './policy.js';
+import { loadPolicy, createPolicyChecks, type MCPMedicPolicy } from './policy.js';
 import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline } from './fleet.js';
 import { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
 import { formatReportSarif } from './sarif.js';
+import { computeReportQualityScore } from './quality-score.js';
 import type { Check, MCPConfig, RunReport, DiagnosticResult } from './types.js';
 import { SUPPORTED_PROTOCOL_VERSIONS } from './protocol/versions.js';
 import pc from 'picocolors';
 
 export interface ParsedArgs {
-  command: 'check' | 'watch' | 'check-all' | 'diff' | 'fix' | 'help' | 'version';
+  command: 'check' | 'watch' | 'check-all' | 'diff' | 'fix' | 'score' | 'help' | 'version';
   configPath?: string;
   configPathB?: string;
   globPattern?: string;
@@ -37,6 +38,8 @@ export interface ParsedArgs {
   failOn: 'error' | 'warning';
   checkFilter?: string;
   dryRun: boolean;
+  /** Include the MCP quality score section in the report (`--score`, or implied by the `score` command). */
+  showScore: boolean;
   /** "auto" (default) or an explicit MCP protocolVersion string, e.g. "2025-06-18". */
   protocolVersion: string;
 }
@@ -53,6 +56,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
     failOn: 'error',
     dryRun: false,
     protocolVersion: 'auto',
+    showScore: false,
   };
   const positional: string[] = [];
 
@@ -66,6 +70,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       args.verbose = true;
     } else if (arg === '--dry-run') {
       args.dryRun = true;
+    } else if (arg === '--score') {
+      args.showScore = true;
     } else if (arg === '--help' || arg === '-h') {
       args.command = 'help';
     } else if (arg === '--version' || arg === '-V') {
@@ -128,7 +134,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 
   if (args.command !== 'help' && args.command !== 'version') {
     const first = positional[0];
-    if (first === 'check' || first === 'watch' || first === 'check-all' || first === 'diff' || first === 'fix') {
+    if (first === 'check' || first === 'watch' || first === 'check-all' || first === 'diff' || first === 'fix' || first === 'score') {
       args.command = first;
       if (first === 'diff') {
         args.configPath = positional[1];
@@ -139,6 +145,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
         if (!args.configPath && positional[1]) {
           args.configPath = positional[1];
         }
+      }
+      if (first === 'score') {
+        args.showScore = true;
       }
     } else if (first && !args.configPath) {
       args.configPath = first;
@@ -197,6 +206,7 @@ USAGE
   $ mcp-medic [check] [path/to/config.json] [options]
   $ mcp-medic check --registry <server-id> [options]
   $ mcp-medic check-all "<glob-pattern>" [options]
+  $ mcp-medic score <path/to/config.json> [options]
   $ mcp-medic diff <configA.json> <configB.json>
   $ mcp-medic watch <path/to/config.json> [options]
   $ mcp-medic fix <path/to/config.json> [--check <id>] [--dry-run]
@@ -210,10 +220,11 @@ OPTIONS
   --export-junit <file> Export report in JUnit XML format
   --export-json <file>  Export report in JSON format
   --export-sarif <file> Export report in SARIF 2.1.0 format (GitHub Code Scanning, etc.)
+  --score               Include the MCP quality score in the report (implied by the "score" command)
   --show-fixes          Print actionable suggested fixes under diagnostics
   --fail-on <severity>  Exit with code 1 on 'error' (default) or 'warning'
   --verbose, -v         Print raw JSON-RPC traffic and debug messages
-  --json                Output report in JSON format
+  --json                Output report in JSON format (always includes a "quality" field)
   --timeout <ms>        Per-server handshake timeout in milliseconds (default: 5000)
   --protocol-version <v> MCP protocolVersion to request: "auto" (default, latest supported)
                         or an explicit version, e.g. ${SUPPORTED_PROTOCOL_VERSIONS[SUPPORTED_PROTOCOL_VERSIONS.length - 1]}
@@ -225,6 +236,13 @@ PROTOCOL VERSIONS
   "auto" requests ${SUPPORTED_PROTOCOL_VERSIONS[0]} (the newest). The server may negotiate an
   older version instead; mcp-medic reports both and fails cleanly if the
   negotiated version isn't one this client supports.
+
+MCP QUALITY SCORE
+  A deterministic 0-100 score (no LLM, no randomness) across five weighted
+  dimensions: Protocol (25%), Schema (20%), Agent usability (20%), Security
+  (20%), Reliability (15%). Every point deducted is derived from an actual
+  diagnostic and is explained in the report's "Deductions" list. Policy can
+  gate on it via "quality": { "minimumScore": N } in .mcp-medic-policy.json.
 
 FIX OPTIONS (mcp-medic fix)
   --check <id>          Only offer fixes from this check id (e.g. security.untrusted-remote)
@@ -280,9 +298,30 @@ async function executeCheck(
       try {
         const baseline = JSON.parse(readFileSync(args.snapshotPath, 'utf-8')) as RunReport;
         report = filterDiagnosticsByBaseline(report, baseline);
+        // The quality score must reflect what's actually being reported —
+        // recompute it against the post-baseline-filter diagnostics rather
+        // than leaving the pre-filter score (computed by runChecks) stale.
+        report.quality = computeReportQualityScore(report);
       } catch (err) {
         console.error(pc.yellow(`Warning: Could not read snapshot baseline: ${String(err)}`));
       }
+    }
+  }
+
+  // Policy gate: fail if the computed quality score is below the configured
+  // minimum. This can't be a `Check` (it needs the score computed from every
+  // check's output, not a single connection), so it's enforced here instead.
+  const policy = loadPolicy(args.policyPath);
+  if (typeof policy?.quality?.minimumScore === 'number' && report.quality) {
+    if (report.quality.overall < policy.quality.minimumScore) {
+      report.diagnostics.push({
+        checkId: 'policy.minimum-quality-score',
+        severity: 'error',
+        message: `MCP quality score ${report.quality.overall} is below the policy minimum of ${policy.quality.minimumScore}.`,
+        serverName: config.servers.map((s) => s.name).join(', ') || '(no servers)',
+        category: 'configuration',
+      });
+      report.summary.errors += 1;
     }
   }
 
@@ -329,7 +368,7 @@ async function executeCheck(
     console.log(formatReportJSON(report));
   } else {
     console.log(
-      colorizeHumanReport(formatReportHuman(report, { showFixes: args.showFixes })),
+      colorizeHumanReport(formatReportHuman(report, { showFixes: args.showFixes, showScore: args.showScore })),
     );
   }
 

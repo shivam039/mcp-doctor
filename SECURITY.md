@@ -22,6 +22,12 @@
 - Network handshakes are subject to configurable timeouts (default `5000ms`) and abort controllers to prevent hanging connections or DoS via slow HTTP servers.
 - Dynamic OAuth token refresh endpoints validate HTTP status codes and restrict header propagation.
 
+### 5. Passive-only discovery — no arbitrary tool execution
+A normal `mcp-medic check` (including the quality score, SARIF, JUnit, and JSON output it produces) only ever calls the MCP protocol's own **enumeration** RPCs: `initialize`, `notifications/initialized`, `tools/list`, `resources/list`, and `prompts/list`. It never calls `tools/call`, `resources/read`, or `prompts/get` — those retrieve content or execute real behavior, and are out of scope for a passive config/quality check. This boundary is enforced by construction (no code path in `src/protocol/connect.ts` calls those methods during a normal run), not by a flag that could be forgotten or bypassed.
+
+### 6. Secret redaction
+`headers`, `env`, and `tokenRefreshBody` values whose key looks secret-shaped (`Authorization`, `*_API_KEY`, `client_secret`, `Cookie`, etc.) are redacted to `[REDACTED]` before they ever reach a report, `--json`/`--export-json` output, or a `diff`. `--verbose` JSON-RPC logging only ever logs request/response bodies, never header objects.
+
 ---
 
 ## Reporting Vulnerabilities

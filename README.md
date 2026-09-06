@@ -4,9 +4,9 @@
 [![npm version](https://img.shields.io/npm/v/mcp-medic.svg)](https://www.npmjs.com/package/mcp-medic)
 [![license](https://img.shields.io/npm/l/mcp-medic.svg)](./LICENSE)
 
-Diagnose broken MCP (Model Context Protocol) server configs before they break your agent silently.
+An MCP quality gate for developers and CI — not just "does my config parse," but "is this MCP server high-quality, safe, well-described, and usable by an AI agent."
 
-`mcp-medic` validates MCP server configurations, executes full protocol initialization handshakes across stdio/SSE/HTTP transports, checks all exposed tool JSON schemas against standard specifications, and simulates sample calls — providing actionable suggestions and CI-ready exit codes.
+`mcp-medic` validates MCP server configurations, executes full protocol initialization handshakes across stdio/SSE/HTTP transports (with real protocol version negotiation), passively inspects every declared tool/resource/prompt, checks JSON schemas against the MCP spec, and computes a deterministic 0–100 **MCP Quality Score** — providing actionable diagnostics, a stable diagnostic taxonomy, and CI-ready exit codes.
 
 > [!NOTE]
 > **Naming & Installation**: The npm package for this tool is **`mcp-medic`** (`npx mcp-medic` / `npm i -g mcp-medic`). While this GitHub repository is named `mcp-doctor`, an unrelated older package already occupies the npm name `mcp-doctor` (different author). Users who want this tool must install **`mcp-medic`**, not `mcp-doctor`.
@@ -27,20 +27,52 @@ This is the whole point (a real handshake, not a schema guess) — but it means 
 
 ## Features
 
+- 🏆 **MCP Quality Score**: a deterministic 0–100 score across five weighted dimensions (Protocol, Schema, Agent usability, Security, Reliability) via `mcp-medic score <config>` or `check --score`. No LLM, no randomness — every point is traced back to a real diagnostic.
+- 🧠 **Tool/Resource/Prompt Quality Checks**: flags empty/duplicate/placeholder tool names, vague or placeholder descriptions, malformed input/output schemas, contradictory tool annotations, excessive tool surface (bloat), and duplicate/malformed resources and prompts.
 - 🔍 **Auto-Discovery**: Run `mcp-medic check` with no arguments to auto-discover Claude Desktop, `.mcp.json`, and VS Code/Cursor MCP configuration paths across macOS, Windows, and Linux.
 - 💡 **Auto-Fix Suggestions**: Diagnose issues with clear, actionable fix suggestions using `--show-fixes`.
 - 🌐 **Registry Validation**: Validate published registry entries directly using `mcp-medic check --registry <server-id>`.
 - 🧪 **Fleet Validation** (experimental): Scan and validate monorepos or multi-team configurations with `mcp-medic check-all "<glob>"`.
 - 🧪 **Drift Detection** (experimental): Catch environment divergence between staging and production configs with `mcp-medic diff <configA> <configB>`.
-- 📜 **Policy-as-Code**: Enforce organizational constraints (e.g., banned transports, domain allowlists, minimum description lengths) via `.mcp-medic-policy.json` / `--policy`.
+- 📜 **Policy-as-Code**: Enforce organizational constraints (banned transports, domain allowlists, minimum description lengths, a minimum quality score, a max tool count, required tool descriptions) via `.mcp-medic-policy.json` / `--policy`.
 - 📸 **Snapshot Baseline Mode**: Filter out legacy diagnostics with `--snapshot <baseline.json>` to gate only on newly introduced regressions.
-- 📊 **CI Reporting**: Export standard JUnit XML (`--export-junit <file.xml>`) and JSON (`--export-json <file.json>`) for seamless CI dashboard visualization.
+- 📊 **CI Reporting**: Export JUnit XML (`--export-junit`), JSON (`--export-json`, always includes the quality score), and SARIF 2.1.0 (`--export-sarif`, for GitHub Code Scanning).
 - 👀 **Watch Mode**: Re-run validation on save using `mcp-medic watch <path>`.
-- ⚡ **Transport Hardening**: Full handshake validation across stdio, HTTP (with OAuth token refresh), and SSE (with automatic retry resilience).
+- ⚡ **Protocol Correctness**: real protocol version negotiation (client requests a version, server's actual negotiated version is validated — not assumed), full handshake validation across stdio, HTTP (with OAuth token refresh), and SSE (with automatic retry resilience), plus passive `resources/list`/`prompts/list` capability inspection.
 - 🧪 **VS Code Extension** (experimental, not yet on the Marketplace): in-editor squiggles and hover tooltips — runnable from source today, see [vscode-extension/](./vscode-extension/).
 - 🚦 **CI Usability & Exit Codes**: Strict exit code taxonomy (`0` clean, `1` diagnostic failures, `2` usage/syntax errors) and `--fail-on <error|warning>`.
 - 🤖 **GitHub Action**: Drop-in CI integration via `shivam039/mcp-doctor@main` (or `mcp-medic-action`).
 - 🧩 **Community Checks** (framework ready, no packages published yet): a conformance test helper (`runCheckConformanceSuite`) so anyone can build and publish their own `mcp-medic-check-*` plugin.
+
+---
+
+## MCP Quality Engine
+
+`mcp-medic` computes a deterministic **MCP Quality Score** (0–100) from the same diagnostics shown in the report — there's no separate, opaque scoring model guessing independently. Every point deducted traces back to one or more real diagnostics, and the same input always produces the same score (no LLM, no randomness, no extra network calls beyond the MCP inspection already performed).
+
+```bash
+mcp-medic score path/to/config.json
+# or, alongside the normal report:
+mcp-medic check path/to/config.json --score
+```
+
+### Dimensions
+
+| Dimension | Weight | What it reflects |
+|---|---|---|
+| Protocol | 25% | Version negotiation compatibility, capability-inspection health (`resources/list`/`prompts/list` succeeding), `serverInfo` presence |
+| Schema | 20% | `schema.*` diagnostics — malformed/missing input schemas, type mismatches, missing required fields |
+| Agent usability | 20% | Tool/resource/prompt naming, description quality, output schemas, annotations, tool-surface bloat |
+| Security | 20% | `security.*` heuristic diagnostics (untrusted remotes, overbroad permissions, prompt-injection-risk patterns) |
+| Reliability | 15% | Whether the server connects at all (currently binary — see [Known Limitations](#known-limitations)) |
+
+### How deductions work
+
+Each dimension starts at 100. Diagnostics are grouped by `checkId` and severity (`error`/`warning`/`info`), each contributing capped points (errors up to 25/checkId, warnings up to 15/checkId, info up to 5/checkId) — so **one noisy check can never dominate a dimension**: 20 tools sharing the same description problem cost at most 15 points, not 300. The report's "Deductions" list names exactly which checks cost how many points.
+
+### Diagnostic categories
+
+Every diagnostic has a stable category (`protocol`, `schema`, `quality`, `security`, `reliability`, `usability`, `configuration`) — set explicitly by newer checks, or inferred from the `checkId` prefix for older ones, so nothing that already worked had to change.
 
 ---
 
@@ -71,6 +103,9 @@ npx mcp-medic check path/to/config.json --policy .mcp-medic-policy.json --export
 # Display suggested fixes for flagged diagnostics
 npx mcp-medic check path/to/config.json --show-fixes
 
+# Compute the deterministic MCP quality score
+npx mcp-medic score path/to/config.json
+
 # Watch mode (re-runs checks on save)
 npx mcp-medic watch path/to/config.json
 ```
@@ -87,12 +122,16 @@ npx mcp-medic watch path/to/config.json
 | `check --registry <id>` | Validate a published registry server directly |
 | `watch <path>` | Watch configuration file and re-run checks on file save |
 | `fix <path>` | Interactively apply mechanical suggested fixes (see [Auto-Fix](#auto-fix-mcp-medic-fix) below) |
+| `score <path>` | Print the report with the MCP quality score section (same as `check --score`) |
 | `--config <path>` | Explicit configuration path |
 | `--policy <path>` | Apply organizational policy rules (`.mcp-medic-policy.json`) |
 | `--snapshot <path>` | Compare against baseline snapshot, reporting regressions only |
 | `--update-snapshot <path>` | Save diagnostic report as new baseline snapshot |
 | `--export-junit <file>` | Export report in JUnit XML format |
-| `--export-json <file>` | Export report in JSON format |
+| `--export-json <file>` | Export report in JSON format (always includes `quality`) |
+| `--export-sarif <file>` | Export report in SARIF 2.1.0 format (GitHub Code Scanning, etc.) |
+| `--score` | Include the MCP quality score section in the human report |
+| `--protocol-version <v>` | MCP protocolVersion to request: `auto` (default) or an explicit version |
 | `--show-fixes` | Show suggested fixes inline under diagnostics |
 | `--fail-on <severity>` | Fail with exit code 1 on `error` (default) or `warning` |
 | `--verbose`, `-v` | Output raw JSON-RPC traffic and debug messages |
@@ -137,9 +176,16 @@ Define organization-wide policies that compose with built-in checks:
 {
   "bannedTransports": ["stdio"],
   "allowedDomains": ["corp.internal", "mcp.example.com"],
-  "minDescriptionLength": 20
+  "minDescriptionLength": 20,
+  "quality": {
+    "minimumScore": 80,
+    "maxTools": 100,
+    "requireToolDescriptions": true
+  }
 }
 ```
+
+`quality.minimumScore` fails the run (adds an error diagnostic) if the computed MCP Quality Score falls below the threshold. `quality.maxTools` is an org-enforced hard limit — distinct from the built-in `quality.tool-surface` check's default 100-tool *warning*, which stays a recommendation. `quality.requireToolDescriptions` (or the equivalent top-level `requireToolDescriptions`) turns every missing tool description into a policy error rather than the default warning.
 
 ---
 
@@ -219,7 +265,14 @@ The action adheres to strict exit code taxonomy:
 | `security.untrusted-remote` | `mcp-medic` | **Official** (heuristic) | Flags non-HTTPS or raw-IP SSE/HTTP server URLs |
 | `security.overbroad-permissions` | `mcp-medic` | **Official** (heuristic) | Flags tools with unscoped shell/filesystem/network parameters |
 | `security.prompt-injection-risk` | `mcp-medic` | **Official** (heuristic) | Flags instruction-like language in tool descriptions aimed at the model |
-| `policy.*` | `mcp-medic` | **Official** | Evaluates policy-as-code rules (transports, domains, length) |
+| `quality.tool-name` | `mcp-medic` | **Official** | Flags empty/duplicate (error) and overly-long/ambiguous/placeholder (warning) tool names |
+| `quality.vague-description` | `mcp-medic` | **Official** | Flags present-but-vague tool descriptions (placeholder text, single words, name repeated as description) |
+| `quality.output-schema` | `mcp-medic` | **Official** | Flags a malformed `outputSchema` — never flags its absence, which is optional per spec |
+| `quality.tool-annotations` | `mcp-medic` | **Official** | Flags internally contradictory `ToolAnnotations` hints (e.g. both read-only and destructive) |
+| `quality.tool-surface` | `mcp-medic` | **Official** | Flags excessive tool counts (default 100) and near-duplicate names/descriptions |
+| `quality.resource` | `mcp-medic` | **Official** | Flags duplicate/empty resource URIs and missing required `name` from passive `resources/list` results |
+| `quality.prompt` | `mcp-medic` | **Official** | Flags duplicate/empty prompt or argument names and placeholder descriptions from passive `prompts/list` results |
+| `policy.*` | `mcp-medic` | **Official** | Evaluates policy-as-code rules (transports, domains, length, quality thresholds) |
 | `community.strict-typing` | `mcp-medic-check-strict-typing` | *Planned / example* | Would enforce strict property type annotations |
 | `community.no-empty-enums` | `mcp-medic-check-no-empty-enums` | *Planned / example* | Would ensure non-empty enum option lists |
 
@@ -236,6 +289,9 @@ The `security.*` checks are heuristic — they pattern-match on what a server *d
 - **`security.*` checks are heuristic pattern-matching**, not a security audit — see the note above. They can both miss real issues and flag benign configs (e.g. a legitimate local dev server on plain `http://`).
 - **Fleet commands (`check-all`, `diff`) are newer and less battle-tested** than `check`/`watch` — the core check pipeline they're built on is the same, but edge cases in glob matching or drift diffing are more likely.
 - **The VS Code extension and community check packages are not shipped/published** — see the sections above.
+- **The Reliability quality dimension is currently binary**: 100 if the server connected, 0 if it didn't (plus any future `reliability.*` diagnostics — none exist yet). Signals like latency trends, retry behavior, or flakiness across repeated runs aren't scored yet.
+- **`resources/list`/`prompts/list` pagination (`nextCursor`) is not followed** — mcp-medic inspects only the first page a server returns, matching the existing (also unpaginated) `tools/list` handling. A server with a very large resource/prompt catalog behind pagination will be under-inspected.
+- **The quality score never calls `resources/read`, `prompts/get`, or any tool** — it's entirely derived from the passive `initialize`/`tools/list`/`resources/list`/`prompts/list` responses already gathered during a normal `check`. See [SECURITY.md](./SECURITY.md) for the full passive-only guarantee.
 - **npm README sync**: Latest docs live on GitHub main; npm README updates on the next publish.
 - **First run via `npx`** pays a one-time cost to resolve and download the package; once installed (or on a warm npx cache), `--help`/`--version` return in well under 100ms.
 

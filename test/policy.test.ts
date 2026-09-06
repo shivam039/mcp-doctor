@@ -92,4 +92,49 @@ describe('Policy-as-Code', () => {
     expect(results[0].checkId).toBe('policy.description-length');
     expect(results[0].severity).toBe('warning');
   });
+
+  it('enforces requireToolDescriptions (nested quality form) as an error', () => {
+    const checks = createPolicyChecks({ quality: { requireToolDescriptions: true } });
+    const check = checks.find((c) => c.id === 'policy.require-tool-descriptions')!;
+    expect(check).toBeDefined();
+
+    const conn: MCPConnection = {
+      server: { name: 's', transport: 'stdio' },
+      status: 'connected',
+      tools: [{ name: 'undocumented', inputSchema: {} }],
+    };
+    const results = check.run(conn) as any[];
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ checkId: 'policy.require-tool-descriptions', severity: 'error' });
+  });
+
+  it('honors the deprecated top-level requireToolDescriptions field the same way', () => {
+    const checks = createPolicyChecks({ requireToolDescriptions: true });
+    expect(checks.find((c) => c.id === 'policy.require-tool-descriptions')).toBeDefined();
+  });
+
+  it('enforces quality.maxTools as an organizational error, independent of the default quality.tool-surface warning', () => {
+    const checks = createPolicyChecks({ quality: { maxTools: 2 } });
+    const check = checks.find((c) => c.id === 'policy.max-tools')!;
+    expect(check).toBeDefined();
+
+    const conn: MCPConnection = {
+      server: { name: 's', transport: 'stdio' },
+      status: 'connected',
+      tools: [
+        { name: 'a', description: 'd', inputSchema: {} },
+        { name: 'b', description: 'd', inputSchema: {} },
+        { name: 'c', description: 'd', inputSchema: {} },
+      ],
+    };
+    const results = check.run(conn) as any[];
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ checkId: 'policy.max-tools', severity: 'error' });
+  });
+
+  it('does not add the quality checks when the relevant policy fields are unset', () => {
+    const checks = createPolicyChecks({});
+    expect(checks.find((c) => c.id === 'policy.require-tool-descriptions')).toBeUndefined();
+    expect(checks.find((c) => c.id === 'policy.max-tools')).toBeUndefined();
+  });
 });
