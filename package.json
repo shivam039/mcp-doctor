@@ -1,13 +1,15 @@
 {
-  "name": "mcpdoctor",
+  "name": "mcp-medic",
   "version": "1.0.0",
   "description": "Diagnose broken MCP (Model Context Protocol) server configs before they break your agent silently.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "mcpdoctor": "dist/cli.js",
-    "mcp-doctor": "dist/cli.js"
+    "mcp-medic": "dist/cli.js",
+    "mcpmedic": "dist/cli.js",
+    "mcp-doctor": "dist/cli.js",
+    "mcpdoctor": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -37,7 +39,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/shivam039/mcp-doctor.git"
+    "url": "git+https://github.com/shivam039/mcp-doctor.git"
   },
   "homepage": "https://github.com/shivam039/mcp-doctor#readme",
   "bugs": {
