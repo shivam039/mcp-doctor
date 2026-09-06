@@ -1,6 +1,6 @@
 {
   "name": "mcp-doctor",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Diagnose broken MCP (Model Context Protocol) server configs before they break your agent silently.",
   "type": "module",
   "main": "dist/index.js",
@@ -8,7 +8,10 @@
   "bin": {
     "mcp-doctor": "dist/cli.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist",
+    "action.yml"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
@@ -21,20 +24,30 @@
     "cli",
     "developer-tools",
     "diagnostics",
+    "claude",
+    "claude-desktop",
+    "vscode",
+    "json-schema",
+    "linter",
     "llm",
     "agents"
   ],
+  "author": "Shivam Dixit",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/shivam039/mcp-doctor.git"
   },
+  "homepage": "https://github.com/shivam039/mcp-doctor#readme",
+  "bugs": {
+    "url": "https://github.com/shivam039/mcp-doctor/issues"
+  },
   "dependencies": {
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
+    "@types/node": "^20.0.0",
     "typescript": "^5.5.0",
-    "vitest": "^2.0.0",
-    "@types/node": "^20.0.0"
+    "vitest": "^2.0.0"
   }
 }
