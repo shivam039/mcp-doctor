@@ -186,6 +186,8 @@ export function runChecks(config: MCPConfig, options?: RunOptions): Promise<RunR
 | CLI entry point + fixtures (broken sample configs) + colored output | **Antigravity** | `src/cli.ts`, `test/fixtures/*.json` |
 | Interactive auto-fix command + config-patch logic (Phase 3) | **Antigravity** | `src/fix.ts`, `fix` command in `src/cli.ts` |
 | Security heuristic checks (Phase 3 — normally Jules' `src/checks/*` area; implemented by Antigravity this session per direct human request, since `fix` and the checks that produce fixable patches are tightly coupled) | **Antigravity** | `src/checks/security-*.ts` |
+| Secret redaction (headers/env/token-body values scrubbed before reaching any report, export, or diff) | **core** | `src/redact.ts` |
+| SARIF 2.1.0 export (`--export-sarif`, single-config `check`/`fix` path only — fleet/`check-all` has no SARIF formatter yet) | **core** | `src/sarif.ts` |
 
 **Merge order:** core types → protocol layer → checks → CLI. Checks need a
 real or mocked `MCPConnection`; CLI needs checks; nobody should block on

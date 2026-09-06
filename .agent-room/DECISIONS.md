@@ -170,3 +170,41 @@ back whatever `protocolVersion` the client requested instead of a hardcoded valu
 Covered by 7 new tests in `test/protocol/connect.test.ts` (`describe('protocol version
 negotiation', ...)`, 127 total tests passing, up from 120).
 
+## 2026-09-06 — [core] Secret redaction (src/redact.ts) + SARIF export (src/sarif.ts)
+Decision: Add `src/redact.ts` (`isSecretKey`, `redactRecord`, `redactDeep`,
+`sanitizeServerConfig`) and call `sanitizeServerConfig(server)` in
+`orchestrator.ts`'s `runChecks()` before a connection is pushed into
+`RunReport.connections`, and `redactRecord()` on `env` values in
+`fleet.ts`'s `diffConfigs()`. Separately, add `src/sarif.ts`
+(`formatReportSarif`) and a `--export-sarif <file>` CLI flag.
+Reason (redaction): audited every place `MCPServerConfig` data reaches
+output. Confirmed no built-in check reads `.headers`/`.env`/`.tokenRefreshBody`
+*values* (only `.name`/`.transport`/`.url`), but `--json`/`--export-json`
+(`formatReportJSON` → `JSON.stringify(report)`) and `diff`'s `env` change
+entries serialized those raw values verbatim — a config with
+`headers: { Authorization: "Bearer sk-..." }` or `env: { API_KEY: "..." }`
+would leak the literal secret into report/export/diff output, which
+routinely gets pasted into CI logs, PRs, and issue trackers. This directly
+violates the standing constraint (never log auth headers, bearer tokens,
+API keys, cookies, or secret env vars). Since checks don't need the real
+values, redacting at the point a connection enters the report is safe and
+changes no diagnostic behavior — verified by a new test asserting a report
+containing a live secret string never appears in `JSON.stringify(report)`
+after redaction, plus unit tests for `redact.ts` itself and a `diff`-level
+test for the `env` redaction. Non-secret keys (`Content-Type`, `NODE_ENV`)
+are left visible so output stays debuggable. `--verbose` JSON-RPC wire
+logging in `src/protocol/connect.ts` was audited too — it already only
+logs request/response bodies, never the `headers` object itself, so no
+change was needed there.
+Reason (SARIF): `--export-sarif` was on the explicit acceptance-criteria
+list for CI integration alongside the existing JUnit/JSON exports (see
+`src/junit.ts`, same report-formatter pattern). mcp-medic diagnoses a
+*running server's* declared tools/capabilities, not source code, so there
+are no line/column positions to report; each SARIF result instead points
+its `physicalLocation` at the config file the server was declared in and
+names the server (and tool, if tool-scoped) as `logicalLocations`. Scoped
+to the single-config `check`/`fix` path only in this pass — `check-all`'s
+`FleetReport` has no SARIF formatter yet (same gap JUnit had until fleet
+support was added later); left as a follow-up rather than rushed in
+alongside everything else.
+

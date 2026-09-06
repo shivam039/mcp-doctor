@@ -13,6 +13,7 @@ import { isConfigPatch, diffConfigPatch, applyConfigPatch, type ConfigPatch } fr
 import { loadPolicy, createPolicyChecks } from './policy.js';
 import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline } from './fleet.js';
 import { formatReportJUnit, formatFleetReportJUnit } from './junit.js';
+import { formatReportSarif } from './sarif.js';
 import type { Check, MCPConfig, RunReport, DiagnosticResult } from './types.js';
 import { SUPPORTED_PROTOCOL_VERSIONS } from './protocol/versions.js';
 import pc from 'picocolors';
@@ -26,6 +27,7 @@ export interface ParsedArgs {
   policyPath?: string;
   exportJunit?: string;
   exportJson?: string;
+  exportSarif?: string;
   snapshotPath?: string;
   updateSnapshotPath?: string;
   json: boolean;
@@ -86,6 +88,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
       args.exportJunit = argv[++i];
     } else if (arg === '--export-json') {
       args.exportJson = argv[++i];
+    } else if (arg === '--export-sarif') {
+      args.exportSarif = argv[++i];
     } else if (arg === '--snapshot') {
       args.snapshotPath = argv[++i];
     } else if (arg === '--update-snapshot') {
@@ -205,6 +209,7 @@ OPTIONS
   --update-snapshot <p> Save diagnostic report as new baseline snapshot
   --export-junit <file> Export report in JUnit XML format
   --export-json <file>  Export report in JSON format
+  --export-sarif <file> Export report in SARIF 2.1.0 format (GitHub Code Scanning, etc.)
   --show-fixes          Print actionable suggested fixes under diagnostics
   --fail-on <severity>  Exit with code 1 on 'error' (default) or 'warning'
   --verbose, -v         Print raw JSON-RPC traffic and debug messages
@@ -308,6 +313,15 @@ async function executeCheck(
       writeFileSync(resolve(args.exportJson), JSON.stringify(report, null, 2));
     } catch (err) {
       console.error(pc.red(`Failed to write JSON export: ${String(err)}`));
+    }
+  }
+
+  // Handle SARIF export
+  if (args.exportSarif) {
+    try {
+      writeFileSync(resolve(args.exportSarif), formatReportSarif(report));
+    } catch (err) {
+      console.error(pc.red(`Failed to write SARIF export: ${String(err)}`));
     }
   }
 

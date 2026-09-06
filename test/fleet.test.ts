@@ -50,6 +50,24 @@ describe('Fleet Management & Drift Detection', () => {
     expect(added?.kind).toBe('added');
   });
 
+  it('redacts secret-looking env values in drift output instead of exposing them raw', () => {
+    const configA: MCPConfig = {
+      servers: [{ name: 'srv', transport: 'stdio', env: { API_KEY: 'sk-old-secret', STAGE: 'dev' } }],
+    };
+    const configB: MCPConfig = {
+      servers: [{ name: 'srv', transport: 'stdio', env: { API_KEY: 'sk-new-secret', STAGE: 'prod' } }],
+    };
+
+    const diff = diffConfigs(configA, configB);
+    const modified = diff.entries.find((e) => e.serverName === 'srv');
+    const envChange = modified?.changes?.find((c) => c.field === 'env');
+
+    expect(envChange?.from).toEqual({ API_KEY: '[REDACTED]', STAGE: 'dev' });
+    expect(envChange?.to).toEqual({ API_KEY: '[REDACTED]', STAGE: 'prod' });
+    expect(JSON.stringify(diff)).not.toContain('sk-old-secret');
+    expect(JSON.stringify(diff)).not.toContain('sk-new-secret');
+  });
+
   it('runs fleet checks across multiple config files in a directory', async () => {
     const config1 = join(testFleetDir, 'team-a.mcp.json');
     const config2 = join(testFleetDir, 'team-b.mcp.json');
