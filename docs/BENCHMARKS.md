@@ -16,6 +16,16 @@ This document records the dynamic validation, performance benchmarks, and diagno
 | **Telemetry Output** | [`test/integration/live-run-results.json`](../test/integration/live-run-results.json) |
 | **JUnit XML Report** | [`test/integration/junit-report.xml`](../test/integration/junit-report.xml) |
 
+### Reproducing this benchmark
+
+```bash
+npm install
+npm run build
+npm run test:live-fleet
+```
+
+`npm run test:live-fleet` runs `mcp-medic check` against the fixture fleet above with a 15s per-server timeout (real servers spawned via `npx` need more time than the default 5s, especially on a cold `npx` cache). This is a live, network- and process-dependent script — it's intentionally **not** part of `npm test` or the CI matrix, since it spawns real `npx`-installed reference servers and isn't suitable to run on every push. Run it locally when validating against a new reference server or before a release; it exits non-zero if any server fails to connect or a check reports an `error`-severity diagnostic, same as any other `mcp-medic check` run. Note `reference-github` uses a placeholder `GITHUB_PERSONAL_ACCESS_TOKEN` in the fixture — its `tools/list` still succeeds (schema discovery doesn't require a valid token), but a real token would be needed to exercise its tools beyond discovery.
+
 ---
 
 ## 2. Server Fleet Summary
