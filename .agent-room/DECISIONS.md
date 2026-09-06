@@ -108,10 +108,21 @@ what CONTRACT.md's original module-boundary table split between
 "Antigravity" (CLI) and "Jules" (checks). Since a fixable check and the
 patch shape `fix` understands are two halves of one feature, and no other
 session was concurrently working `src/checks/*` at the time, implementing
-both together in one session avoided a shape mismatch between what a check
-promises and what `fix` can apply. Module boundaries table updated in the
-same commit per CONTRACT.md's own rule.
-Supersedes: CONTRACT.md's "Not in v1: auto-fix" line — Phase 3 explicitly
-adds it; see the new "Scope of Phase 3" section.
+## 2026-09-06 — [antigravity] Phase 4: Policy-as-code, Fleet management, CI JUnit reporting
+Decision: Implement `src/policy.ts` (.mcp-medic-policy.json loader and composable check generator),
+`src/fleet.ts` (`check-all` glob runner and `diff` configuration drift comparator), `src/junit.ts`
+(standard JUnit XML generator for CI dashboards), `src/snapshot.ts` (baseline regression filtering),
+and `src/conformance.ts` (community check plugin test harness).
+Reason: Enables enterprise governance across multi-server monorepos, catches configuration drift,
+and prevents breaking CI pipelines on pre-existing legacy warnings.
+
+## 2026-09-06 — [antigravity] Phase 5: Unscoped npm release as `mcp-medic` & Zero-Touch OIDC Publishing
+Decision: Publish package under available unscoped npm package name `mcp-medic` (with binary aliases
+`mcp-medic`, `mcpmedic`, `mcp-doctor`, `mcpdoctor`), deliver 4-stage distribution strategy, outreach tracking
+log with honesty check criteria, troubleshooting cookbook, and zero-touch automated CI release workflow
+(`.github/workflows/publish.yml` + `scripts/auto-release.js`) leveraging npm Tokenless Trusted Publishing (OIDC).
+Reason: The original unscoped name `mcp-doctor` was already registered on npm by a third-party author; `mcp-medic`
+preserves the medical/diagnostic theme, is fully published (v1.0.0 & v1.0.1), and tokenless OIDC eliminates
+static secret expiration and annual token rotation maintenance.
 
 

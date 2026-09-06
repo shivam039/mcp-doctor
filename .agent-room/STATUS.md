@@ -13,13 +13,14 @@ Format: `[owner] area — status — last updated (UTC date)`
 - [jules] schema validation checks — DONE (5 checks + fixtures + test suites) — 2026-09-06
 - [antigravity] CLI + fixtures + config-loader — DONE (works end-to-end against orchestrator) — see HANDOFF/antigravity.md
 - [antigravity] Phase 3: `mcp-doctor fix` + security.* checks — DONE (interactive auto-apply, .bak backup, --dry-run, --check filter, idempotent; 3 heuristic security checks) — see HANDOFF/antigravity.md
+- [antigravity] Phase 4: Policy-as-code, Fleet check-all, diff drift, snapshots, JUnit XML, Conformance suite — DONE — see HANDOFF/antigravity.md
+- [antigravity] Phase 5: Distribution flywheel, VS Code marketplace listing, troubleshooting guide, unscoped release as `mcp-medic` on npm, and zero-touch OIDC Trusted Publishing CI pipeline — DONE — see HANDOFF/antigravity.md
 
 ---
 
 ## Blocked / needs decision
 
-(nothing yet — add here if you're stuck on something only the human or
-another agent can resolve, with a one-line reason)
+(none — all phases implemented, 118/118 tests passing, published to npm as mcp-medic, automated release pipeline active)
 
 ## Next up (in merge order)
 

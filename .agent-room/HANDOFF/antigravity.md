@@ -97,3 +97,22 @@ reports "No auto-fixable diagnostics found" for a config with only those.
 - Did not touch `src/types.ts`, `src/orchestrator.ts`, `src/report.ts`, or
   `src/protocol/*`. Did touch `src/checks/*` this session only — see
   DECISIONS.md for why that's a deliberate, logged exception.
+
+## Done this session (Phase 4: Enterprise Governance & Phase 5: Distribution / NPM Release)
+
+- **Policy-as-Code (`src/policy.ts`)**: Auto-loads `.mcp-medic-policy.json` (fallback `.mcp-doctor-policy.json`) and generates composable `Check` objects enforcing transport bans, domain allowlists, and description lengths.
+- **Fleet & Drift Detection (`src/fleet.ts`)**: Multi-config runner (`mcp-medic check-all "<glob>"`) and structural drift detector (`mcp-medic diff <a.json> <b.json>`).
+- **CI / Team Reporting (`src/junit.ts`, `src/snapshot.ts`)**: Standard JUnit XML export (`--export-junit <file.xml>`) and baseline regression snapshotting (`--snapshot <file.json>`).
+- **Community Conformance Suite (`src/conformance.ts`)**: Exported test harness for third-party `mcp-medic-check-*` plugins.
+- **NPM Package Release**: Published unscoped package `mcp-medic@1.0.0` and `v1.0.1` on npm registry ([https://www.npmjs.com/package/mcp-medic](https://www.npmjs.com/package/mcp-medic)) with binary aliases for `mcp-medic`, `mcpmedic`, `mcp-doctor`, and `mcpdoctor`.
+- **Zero-Touch CI/CD Automation**:
+  - [.github/workflows/publish.yml](file:///Users/shivamdixit/Desktop/mcp-doctor/.github/workflows/publish.yml): Automated OIDC Trusted Publishing workflow on push to `main`.
+  - [scripts/auto-release.js](file:///Users/shivamdixit/Desktop/mcp-doctor/scripts/auto-release.js): Automatic semver bumping, git tag creation, and release generation.
+  - [.github/workflows/ci.yml](file:///Users/shivamdixit/Desktop/mcp-doctor/.github/workflows/ci.yml): Optimized multi-platform test matrix with path filtering and auto-cancellation concurrency.
+- **Documentation & Growth Strategy**: Delivered `docs/DISTRIBUTION.md`, `docs/OUTREACH_LOG.md`, `docs/MARKETPLACE_LISTING.md`, `docs/TROUBLESHOOTING.md`, `docs/CI_INTEGRATION.md`, `docs/AUTHORING_CHECKS.md`, `docs/RFC_PROCESS.md`, `docs/STABILITY_POLICY.md`, `GOVERNANCE.md`, and `SECURITY.md`.
+
+## Test & Build Verification
+
+- `npm run typecheck`: **0 errors**
+- `npm test`: **23 test files, 118/118 tests passing (100%)**
+- `npm run build`: Clean TypeScript compilation to `dist/`
