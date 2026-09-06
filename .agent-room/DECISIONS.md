@@ -29,6 +29,23 @@ Reason: one malformed community/future check shouldn't crash the whole run;
 matches the "isolate failures" pattern used elsewhere in these kinds of
 diagnostic tools.
 
+## 2026-09-06 — [codex] Protocol transport implementation
+Decision: Implement the MCP JSON-RPC transport with Node primitives rather than
+adding `@modelcontextprotocol/sdk`, use protocol version `2024-11-05`, and
+close stdio child processes immediately after initialize and tools/list finish.
+Reason: the package has no SDK dependency and the connection contract stores
+negotiated data rather than a live session; this keeps the public dependency
+surface unchanged and prevents leaked server processes.
+
+## 2026-09-06 — [jules] Zero-dependency lightweight validation in sample-call simulation
+Decision: Implement a built-in lightweight validator and synthetic payload generator
+in `src/checks/sample-call-simulation.ts` without introducing new dependencies like `ajv`
+in v1, but report caveats when complex schemas (`$ref`, `oneOf`, `anyOf`, `allOf`) are encountered.
+Reason: Keeps runtime dependencies at zero per current codebase philosophy while
+reliably detecting self-contradictory schemas (empty enums, conflicting min/max bounds,
+missing required property definitions). Adding `ajv` as a production dependency can be
+evaluated in a future iteration if deep JSON Schema draft-07/2020-12 spec compliance is needed.
+
 ## 2026-09-06 — [antigravity] picocolors for CLI color output
 Decision: use `picocolors` (added to `dependencies`, not devDependencies —
 it's needed at runtime by `dist/cli.js`) for red/yellow/green terminal
@@ -43,7 +60,7 @@ dynamic `import()`, not the static re-export pattern from the task spec
 Decision: `src/cli.ts` loads `./checks/index.js` and `./protocol/index.js`
 through a shared `importOptional(specifier: string)` helper (specifier
 passed as a runtime string, not a string literal in the `import()` call
-itself) and swallows module-not-found errors, falling back to an empty
+itsf) and swallows module-not-found errors, falling back to an empty
 check list / the orchestrator's built-in `connectStub`. Same reasoning
 applies to `src/index.ts`: the `export { allChecks } from './checks/index.js'`
 re-export named in the task spec is left as a comment, not live code.
@@ -61,3 +78,4 @@ Once `src/checks/index.ts` lands, uncomment the static re-export in
 `src/index.ts` — the dynamic-import path in `cli.ts` can stay either way,
 but switching it to a static import at that point is a fine cleanup, not
 required.
+
