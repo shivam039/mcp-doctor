@@ -1,0 +1,358 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="mcp-medic" tests="121" failures="0" errors="0">
+  <testsuite name="test/integration/fixtures/live-fleet/mcp-live-fleet.json" tests="121" failures="0">
+    <testcase classname="reference-filesystem-scoped" name="connection.handshake" time="0.356" />
+    <testcase classname="reference-memory" name="connection.handshake" time="0.360" />
+    <testcase classname="reference-everything" name="connection.handshake" time="0.344" />
+    <testcase classname="reference-github" name="connection.handshake" time="0.339" />
+    <testcase classname="boundary-filesystem-root" name="connection.handshake" time="0.341" />
+    <testcase classname="reference-filesystem-scoped.read_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;read_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.read_text_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;read_text_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.read_media_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;read_media_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.write_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;write_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.write_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;content&quot; in tool &quot;write_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.edit_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;edit_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.edit_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;edits&quot; in tool &quot;edit_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.create_directory" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;create_directory&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.list_directory" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;list_directory&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.list_directory_with_sizes" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;list_directory_with_sizes&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.directory_tree" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;directory_tree&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.directory_tree" name="schema.missing-description">
+      <system-out>[info] Property &quot;excludePatterns&quot; in tool &quot;directory_tree&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.move_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;source&quot; in tool &quot;move_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.move_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;destination&quot; in tool &quot;move_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.search_files" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;search_files&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.search_files" name="schema.missing-description">
+      <system-out>[info] Property &quot;pattern&quot; in tool &quot;search_files&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.search_files" name="schema.missing-description">
+      <system-out>[info] Property &quot;excludePatterns&quot; in tool &quot;search_files&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.get_file_info" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;get_file_info&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.read_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;read_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.read_text_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;read_text_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.read_media_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;read_media_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.write_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;write_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.edit_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;edit_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.create_directory" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;create_directory&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.list_directory" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;list_directory&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.list_directory_with_sizes" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;list_directory_with_sizes&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.directory_tree" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;directory_tree&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.search_files" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;search_files&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-filesystem-scoped.get_file_info" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;get_file_info&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-memory.create_entities" name="schema.missing-description">
+      <system-out>[info] Property &quot;entities&quot; in tool &quot;create_entities&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-memory.create_relations" name="schema.missing-description">
+      <system-out>[info] Property &quot;relations&quot; in tool &quot;create_relations&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-memory.add_observations" name="schema.missing-description">
+      <system-out>[info] Property &quot;observations&quot; in tool &quot;add_observations&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-memory.delete_observations" name="schema.missing-description">
+      <system-out>[info] Property &quot;deletions&quot; in tool &quot;delete_observations&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-everything.get-resource-reference" name="schema.missing-description">
+      <system-out>[info] Property &quot;resourceType&quot; in tool &quot;get-resource-reference&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;owner&quot; in tool &quot;create_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;repo&quot; in tool &quot;create_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;title&quot; in tool &quot;create_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;body&quot; in tool &quot;create_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;assignees&quot; in tool &quot;create_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;milestone&quot; in tool &quot;create_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;labels&quot; in tool &quot;create_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_commits" name="schema.missing-description">
+      <system-out>[info] Property &quot;owner&quot; in tool &quot;list_commits&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_commits" name="schema.missing-description">
+      <system-out>[info] Property &quot;repo&quot; in tool &quot;list_commits&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_commits" name="schema.missing-description">
+      <system-out>[info] Property &quot;sha&quot; in tool &quot;list_commits&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_commits" name="schema.missing-description">
+      <system-out>[info] Property &quot;page&quot; in tool &quot;list_commits&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_commits" name="schema.missing-description">
+      <system-out>[info] Property &quot;perPage&quot; in tool &quot;list_commits&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;owner&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;repo&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;direction&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;labels&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;page&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;per_page&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;since&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;sort&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.list_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;state&quot; in tool &quot;list_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;owner&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;repo&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;issue_number&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;title&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;body&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;assignees&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;milestone&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;labels&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.update_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;state&quot; in tool &quot;update_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.add_issue_comment" name="schema.missing-description">
+      <system-out>[info] Property &quot;owner&quot; in tool &quot;add_issue_comment&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.add_issue_comment" name="schema.missing-description">
+      <system-out>[info] Property &quot;repo&quot; in tool &quot;add_issue_comment&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.add_issue_comment" name="schema.missing-description">
+      <system-out>[info] Property &quot;issue_number&quot; in tool &quot;add_issue_comment&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.add_issue_comment" name="schema.missing-description">
+      <system-out>[info] Property &quot;body&quot; in tool &quot;add_issue_comment&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_code" name="schema.missing-description">
+      <system-out>[info] Property &quot;q&quot; in tool &quot;search_code&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_code" name="schema.missing-description">
+      <system-out>[info] Property &quot;order&quot; in tool &quot;search_code&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_code" name="schema.missing-description">
+      <system-out>[info] Property &quot;page&quot; in tool &quot;search_code&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_code" name="schema.missing-description">
+      <system-out>[info] Property &quot;per_page&quot; in tool &quot;search_code&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;q&quot; in tool &quot;search_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;order&quot; in tool &quot;search_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;page&quot; in tool &quot;search_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;per_page&quot; in tool &quot;search_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_issues" name="schema.missing-description">
+      <system-out>[info] Property &quot;sort&quot; in tool &quot;search_issues&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_users" name="schema.missing-description">
+      <system-out>[info] Property &quot;q&quot; in tool &quot;search_users&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_users" name="schema.missing-description">
+      <system-out>[info] Property &quot;order&quot; in tool &quot;search_users&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_users" name="schema.missing-description">
+      <system-out>[info] Property &quot;page&quot; in tool &quot;search_users&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_users" name="schema.missing-description">
+      <system-out>[info] Property &quot;per_page&quot; in tool &quot;search_users&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.search_users" name="schema.missing-description">
+      <system-out>[info] Property &quot;sort&quot; in tool &quot;search_users&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.get_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;owner&quot; in tool &quot;get_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.get_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;repo&quot; in tool &quot;get_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.get_issue" name="schema.missing-description">
+      <system-out>[info] Property &quot;issue_number&quot; in tool &quot;get_issue&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="reference-github.create_or_update_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;create_or_update_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="reference-github.get_file_contents" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;get_file_contents&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.read_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;read_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.read_text_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;read_text_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.read_media_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;read_media_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.write_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;write_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.write_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;content&quot; in tool &quot;write_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.edit_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;edit_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.edit_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;edits&quot; in tool &quot;edit_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.create_directory" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;create_directory&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.list_directory" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;list_directory&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.list_directory_with_sizes" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;list_directory_with_sizes&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.directory_tree" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;directory_tree&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.directory_tree" name="schema.missing-description">
+      <system-out>[info] Property &quot;excludePatterns&quot; in tool &quot;directory_tree&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.move_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;source&quot; in tool &quot;move_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.move_file" name="schema.missing-description">
+      <system-out>[info] Property &quot;destination&quot; in tool &quot;move_file&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.search_files" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;search_files&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.search_files" name="schema.missing-description">
+      <system-out>[info] Property &quot;pattern&quot; in tool &quot;search_files&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.search_files" name="schema.missing-description">
+      <system-out>[info] Property &quot;excludePatterns&quot; in tool &quot;search_files&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.get_file_info" name="schema.missing-description">
+      <system-out>[info] Property &quot;path&quot; in tool &quot;get_file_info&quot; is missing a description.</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.read_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;read_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.read_text_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;read_text_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.read_media_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;read_media_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.write_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;write_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.edit_file" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;edit_file&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.create_directory" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;create_directory&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.list_directory" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;list_directory&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.list_directory_with_sizes" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;list_directory_with_sizes&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.directory_tree" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;directory_tree&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.search_files" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;search_files&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+    <testcase classname="boundary-filesystem-root.get_file_info" name="security.overbroad-permissions">
+      <system-out>[warning] Tool &quot;get_file_info&quot; parameter &quot;path&quot; accepts an unconstrained filesystem path (no enum or pattern constraining it). (heuristic flag, not a guarantee — review this server&apos;s source before trusting it)</system-out>
+    </testcase>
+  </testsuite>
+</testsuites>

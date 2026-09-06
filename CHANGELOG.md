@@ -4,6 +4,7 @@ All notable changes to `mcp-medic` are documented here. Format loosely follows [
 
 ## [Unreleased]
 
+- Benchmarks & Validation: added live MCP reference server fleet validation suite and published dynamic stress test benchmarks in [`docs/BENCHMARKS.md`](./docs/BENCHMARKS.md).
 - GitHub Action: hardened `action.yml` with complete input mappings, composite runner configuration, and comprehensive Marketplace documentation in `README.md`.
 
 ## [1.0.2] — 2026-09-06
