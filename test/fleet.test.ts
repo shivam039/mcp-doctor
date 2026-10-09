@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline } from '../src/fleet.js';
-import { writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { runFleetChecks, diffConfigs, filterDiagnosticsByBaseline, findConfigFiles } from '../src/fleet.js';
+import { writeFileSync, mkdirSync, rmSync, existsSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { MCPConfig, RunReport } from '../src/types.js';
@@ -16,6 +16,40 @@ describe('Fleet Management & Drift Detection', () => {
     if (existsSync(testFleetDir)) {
       rmSync(testFleetDir, { recursive: true, force: true });
     }
+    rmSync(`${testFleetDir}-outside`, { recursive: true, force: true });
+  });
+
+  it('matches root and nested glob paths and sorts matches deterministically', () => {
+    const nested = join(testFleetDir, 'team b', 'nested');
+    mkdirSync(nested, { recursive: true });
+    writeFileSync(join(testFleetDir, 'z.mcp.json'), '{}');
+    writeFileSync(join(testFleetDir, 'a.mcp.json'), '{}');
+    writeFileSync(join(testFleetDir, 'team b', 'b.mcp.json'), '{}');
+    writeFileSync(join(nested, 'c.mcp.json'), '{}');
+    mkdirSync(join(testFleetDir, 'node_modules', 'deps'), { recursive: true });
+    writeFileSync(join(testFleetDir, 'node_modules', 'deps', 'ignored.mcp.json'), '{}');
+
+    const matches = findConfigFiles('**/*.mcp.json', testFleetDir);
+    expect(matches.map((path) => path.slice(testFleetDir.length + 1).split('\\').join('/'))).toEqual([
+      'a.mcp.json',
+      'team b/b.mcp.json',
+      'team b/nested/c.mcp.json',
+      'z.mcp.json',
+    ]);
+    expect(findConfigFiles('*.mcp.json', testFleetDir).map((path) => path.split(/[\\/]/).pop())).toEqual([
+      'a.mcp.json',
+      'z.mcp.json',
+    ]);
+    expect(findConfigFiles('team b/*.mcp.json', testFleetDir)).toHaveLength(1);
+  });
+
+  it.skipIf(process.platform === 'win32')('does not recurse through symlinked directories', () => {
+    const outside = `${testFleetDir}-outside`;
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(join(outside, 'secret.mcp.json'), '{}');
+    symlinkSync(outside, join(testFleetDir, 'linked'), 'dir');
+
+    expect(findConfigFiles('**/*.mcp.json', testFleetDir)).toEqual([]);
   });
 
   it('detects added, removed, and modified server drift between configs', () => {

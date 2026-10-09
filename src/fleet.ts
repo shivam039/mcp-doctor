@@ -1,4 +1,4 @@
-import { readdirSync, statSync, readFileSync, existsSync } from 'node:fs';
+import { readdirSync, lstatSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { loadConfig } from './config-loader.js';
 import { runChecks } from './orchestrator.js';
@@ -34,17 +34,24 @@ export interface ConfigDiffResult {
   entries: ConfigDiffEntry[];
 }
 
-function findFilesMatching(dir: string, pattern: RegExp, results: string[] = []): string[] {
+function findFilesMatching(dir: string, rootDir: string, pattern: RegExp, results: string[] = []): string[] {
   if (!existsSync(dir)) return results;
-  const entries = readdirSync(dir);
+  let entries: string[];
+  try {
+    entries = readdirSync(dir).sort();
+  } catch {
+    return results;
+  }
   for (const entry of entries) {
     if (entry === 'node_modules' || entry === '.git' || entry === 'dist') continue;
     const fullPath = join(dir, entry);
     try {
-      const stat = statSync(fullPath);
+      const stat = lstatSync(fullPath);
       if (stat.isDirectory()) {
-        findFilesMatching(fullPath, pattern, results);
-      } else if (stat.isFile() && pattern.test(fullPath)) {
+        findFilesMatching(fullPath, rootDir, pattern, results);
+      } else if (stat.isFile()) {
+        const relativePath = fullPath.slice(rootDir.length + 1).split('\\').join('/');
+        if (!pattern.test(relativePath)) continue;
         results.push(fullPath);
       }
     } catch {
@@ -58,13 +65,28 @@ function findFilesMatching(dir: string, pattern: RegExp, results: string[] = [])
  * Discovers config files matching a glob or pattern.
  */
 export function findConfigFiles(globOrPattern: string, rootDir: string = process.cwd()): string[] {
-  // Simple glob converter
-  const regexStr = globOrPattern
-    .replace(/\./g, '\\.')
-    .replace(/\*\*/g, '.*')
-    .replace(/\*/g, '[^/]*');
-  const regex = new RegExp(`${regexStr}$`);
-  return findFilesMatching(rootDir, regex);
+  const root = resolve(rootDir);
+  const glob = globOrPattern.split('\\').join('/').replace(/^\.\//, '');
+  let regexSource = '^';
+  for (let i = 0; i < glob.length; i += 1) {
+    const char = glob[i];
+    if (char === '*' && glob[i + 1] === '*') {
+      i += 1;
+      if (glob[i + 1] === '/') {
+        // A leading or interior **/ can match zero or more path segments.
+        regexSource += '(?:.*/)?';
+        i += 1;
+      } else {
+        regexSource += '.*';
+      }
+    } else if (char === '*') {
+      regexSource += '[^/]*';
+    } else {
+      regexSource += char.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+    }
+  }
+  const regex = new RegExp(`${regexSource}$`);
+  return findFilesMatching(root, root, regex).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 /**
