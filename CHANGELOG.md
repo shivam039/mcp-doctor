@@ -2,9 +2,11 @@
 
 All notable changes to `mcp-medic` are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/); versioning follows [Semantic Versioning](https://semver.org/) — see [docs/STABILITY_POLICY.md](./docs/STABILITY_POLICY.md) for what's frozen at 1.0.
 
-## [Unreleased]
+## [1.2.9] — 2026-10-09
 
-- **Fleet validation reliability**: deterministic `*`/`**` discovery, bounded `check-all --jobs`, secret-safe complete drift comparison, accurate fleet JUnit counts, and nonzero CI results for empty matches, invalid configs, and failed server connections. Added release notes and regression coverage for these behaviors.
+- **Fleet validation reliability**: deterministic, bounded `*`/`**` config discovery; configurable `check-all --jobs`; complete drift comparison with credential redaction; JUnit counts matching emitted test cases; and actionable nonzero results for empty matches, invalid configs, and failed server connections. See the [1.2.9 release PRD](./docs/RELEASE_PRD_1.2.9.md).
+
+## [Unreleased]
 - **MCP Quality Engine v1.1 (trust & coverage hardening)**: the quality score is now protocol-version aware, fully derived from visible diagnostics (no hidden deductions), and honest about what it actually inspected.
   - New `src/protocol/quality-rules.ts` (`getProtocolQualityRules`) distinguishes a real protocol violation (hard constraint defined by the negotiated MCP version) from a quality recommendation. No currently-supported version defines a tool-name length/pattern constraint, so behavior is unchanged today — this is forward-compatible plumbing for when one does.
   - Connection-level facts that used to be deducted from the score with no visible diagnostic (a version downgrade, a missing `serverInfo`, a capability-list failure) are now real diagnostics from a new `protocol.connection-health` check (`protocol.version-downgrade`, `protocol.missing-server-info`, `protocol.capability-error`) — every point deducted is now traceable to something in `report.diagnostics`.

@@ -1,6 +1,6 @@
 # Release PRD: mcp-medic 1.2.9 — Reliable Fleet Validation
 
-**Status:** Proposed
+**Status:** Complete — released as 1.2.9
 **Target:** 1.2.9
 **Owner:** mcp-medic maintainers
 
