@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { parseArgs, main } from '../src/cli.js';
 import { resolve } from 'node:path';
-import { readFileSync, existsSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, rmSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -98,6 +98,82 @@ describe('CLI argument parsing and execution', () => {
     expect(argsDiff.configPath).toBe('staging.json');
     expect(argsDiff.configPathB).toBe('prod.json');
     expect(argsDiff.json).toBe(true);
+  });
+
+  it('returns a clear nonzero result when check-all matches no files', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mcp-medic-no-match-'));
+    const originalCwd = process.cwd();
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (message: string) => logs.push(message);
+    console.error = (message: string) => errors.push(message);
+    let code: number | undefined;
+    try {
+      process.chdir(root);
+      code = await main(['check-all', 'missing-*.mcp.json', '--json']);
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      console.error = originalError;
+      rmSync(root, { recursive: true, force: true });
+    }
+
+    expect(code).toBe(1);
+    expect(JSON.parse(logs[0]!).totalFiles).toBe(0);
+    expect(errors.join('\n')).toContain('No configuration files matched');
+    expect(errors.join('\n')).toContain('Check the glob pattern');
+  });
+
+  it('applies fleet error and warning thresholds to clean, warning, handshake, and invalid-config runs', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mcp-medic-fleet-gates-'));
+    const originalCwd = process.cwd();
+    const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.js', import.meta.url));
+    const configPath = join(root, 'fleet.json');
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message: string) => logs.push(message);
+
+    const run = async (contents: string, ...args: string[]) => {
+      writeFileSync(configPath, contents);
+      logs.length = 0;
+      const code = await main(['check-all', '*.json', '--json', '--timeout', '2000', ...args]);
+      return { code, report: JSON.parse(logs.at(-1)!) };
+    };
+
+    try {
+      process.chdir(root);
+      const config = (mode: string) => JSON.stringify({
+        servers: [{ name: 'fake', transport: 'stdio', command: process.execPath, args: [fixture, mode] }],
+      });
+
+      const clean = await run(config('with-description'));
+      expect(clean.code).toBe(0);
+      expect(clean.report.totalErrors).toBe(0);
+      expect(clean.report.totalWarnings).toBe(0);
+
+      const warningsAllowed = await run(config('missing-description'));
+      expect(warningsAllowed.code).toBe(0);
+      expect(warningsAllowed.report.totalWarnings).toBeGreaterThan(0);
+      expect(warningsAllowed.report.totalErrors).toBe(0);
+
+      const warningsBlocked = await run(config('missing-description'), '--fail-on', 'warning');
+      expect(warningsBlocked.code).toBe(1);
+
+      const failedHandshake = await run(config('malformed'));
+      expect(failedHandshake.report.fileResults[0].report.summary.failed).toBe(1);
+      expect(failedHandshake.report.totalErrors).toBe(1);
+      expect(failedHandshake.code).toBe(1);
+
+      const invalidConfig = await run('{not valid json');
+      expect(invalidConfig.report.failedFiles).toBe(1);
+      expect(invalidConfig.code).toBe(1);
+    } finally {
+      process.chdir(originalCwd);
+      console.log = originalLog;
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('executes diff command comparing two identical configs', async () => {

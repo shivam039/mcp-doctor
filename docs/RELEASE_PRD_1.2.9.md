@@ -1,7 +1,7 @@
-# Release PRD: mcp-medic 1.2.0 — Reliable Fleet Validation
+# Release PRD: mcp-medic 1.2.9 — Reliable Fleet Validation
 
-**Status:** Proposed  
-**Target:** 1.2.0  
+**Status:** Proposed
+**Target:** 1.2.9
 **Owner:** mcp-medic maintainers
 
 ## Summary
@@ -67,8 +67,9 @@ Fleet validation is marked experimental and has limited edge-case coverage. Recu
 
 ### Iteration 5 — CI gate clarity and release documentation
 
-- A zero-match fleet run must exit nonzero with a clear actionable message.
-- Keep `--fail-on error|warning` behavior explicit and test threshold boundaries.
+- A zero-match fleet run must exit nonzero with actionable guidance, including in JSON mode without corrupting JSON on stdout.
+- Failed server connections and malformed files must block the fleet CI gate at either threshold.
+- Keep `--fail-on error|warning` behavior explicit: warnings are tolerated at `error` and block at `warning`; test clean, warning-only, failed-connection, and invalid-config boundaries.
 - Document `--jobs`, matching semantics, zero-match behavior, and the security boundary for live config execution.
 - Update changelog and remove the fleet experimental limitation only if all acceptance criteria pass.
 

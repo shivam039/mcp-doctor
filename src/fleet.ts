@@ -205,7 +205,10 @@ export async function runFleetChecks(
 
       const checks = options.checks ?? allChecks;
       const report = await runChecks(config, { ...options, checks });
-      return { fileResult: { filePath, report }, errorCount: report.summary.errors };
+      return {
+        fileResult: { filePath, report },
+        errorCount: report.summary.errors + report.summary.failed,
+      };
     } catch (err) {
       return {
         fileResult: { filePath, error: `Could not process file: ${err instanceof Error ? err.message : String(err)}` },

@@ -639,6 +639,12 @@ export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps
       verbose: args.verbose,
       protocolVersion: args.protocolVersion,
     });
+    const noMatches = fleetReport.totalFiles === 0;
+    if (noMatches) {
+      console.error(
+        pc.red(`No configuration files matched "${glob}". Check the glob pattern and run from the intended project root.`),
+      );
+    }
 
     if (args.exportJunit) {
       try {
@@ -660,14 +666,17 @@ export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps
         if (res.error) {
           console.log(pc.red(`[FAIL] ${res.filePath} — ${res.error}`));
         } else if (res.report) {
-          const status = res.report.summary.errors === 0 ? pc.green('[PASS]') : pc.red('[FAIL]');
-          console.log(`${status} ${res.filePath} (${res.report.summary.servers} servers, ${res.report.summary.errors} errors, ${res.report.summary.warnings} warnings)`);
+          const status = res.report.summary.errors === 0 && res.report.summary.failed === 0
+            ? pc.green('[PASS]')
+            : pc.red('[FAIL]');
+          console.log(`${status} ${res.filePath} (${res.report.summary.servers} servers, ${res.report.summary.failed} connection failure(s), ${res.report.summary.errors} errors, ${res.report.summary.warnings} warnings)`);
         }
       }
     }
 
     const hasErrors = fleetReport.totalErrors > 0;
     const hasWarnings = fleetReport.totalWarnings > 0;
+    if (noMatches) return 1;
     if (args.failOn === 'warning') {
       return hasErrors || hasWarnings ? 1 : 0;
     }

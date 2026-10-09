@@ -114,7 +114,11 @@ input.on('line', (line) => {
     process.stdout.write(`${JSON.stringify({
       jsonrpc: '2.0',
       id: request.id,
-      result: { tools: [{ name: 'echo', description: 'Echoes input', inputSchema: { type: 'object' } }] },
+      result: { tools: [{
+        name: 'echo',
+        ...(mode === 'missing-description' ? {} : { description: 'Echoes input' }),
+        inputSchema: { type: 'object' },
+      }] },
     })}\n`);
   } else if (request.method === 'resources/list') {
     if (mode === 'broken-resources') {

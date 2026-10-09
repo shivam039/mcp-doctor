@@ -32,7 +32,7 @@ This is the whole point (a real handshake, not a schema guess) — but it means 
 - 🔍 **Auto-Discovery**: Run `mcp-medic check` with no arguments to auto-discover Claude Desktop, `.mcp.json`, and VS Code/Cursor MCP configuration paths across macOS, Windows, and Linux.
 - 💡 **Auto-Fix Suggestions**: Diagnose issues with clear, actionable fix suggestions using `--show-fixes`.
 - 🌐 **Registry Validation**: Validate published registry entries directly using `mcp-medic check --registry <server-id>`.
-- 🧪 **Fleet Validation** (experimental): Scan and validate monorepos or multi-team configurations with `mcp-medic check-all "<glob>"`.
+- **Fleet Validation**: Scan and validate monorepos or multi-team configurations with deterministic `*`/`**` glob matching, bounded parallel checks, and CI-ready failure handling.
 - 🧪 **Drift Detection** (experimental): Catch environment divergence between staging and production configs with `mcp-medic diff <configA> <configB>`.
 - 📜 **Policy-as-Code**: Enforce organizational constraints (banned transports, domain allowlists, minimum description lengths, a minimum quality score, a max tool count, required tool descriptions) via `.mcp-medic-policy.json` / `--policy`.
 - 📸 **Snapshot Baseline Mode**: Filter out legacy diagnostics with `--snapshot <baseline.json>` to gate only on newly introduced regressions.
@@ -151,13 +151,16 @@ npx mcp-medic watch path/to/config.json
 | `--verbose`, `-v` | Output raw JSON-RPC traffic and debug messages |
 | `--json` | Output full diagnostic report in JSON |
 | `--timeout <ms>` | Per-server handshake timeout in milliseconds (default: `5000`) |
+| `--jobs <n>` | Maximum configs processed concurrently by `check-all` (positive integer; default: `1`) |
 | `--help`, `-h` | Show usage help |
 | `--version`, `-V` | Print the installed version |
+
+`check-all` interprets globs relative to the current working directory: `*` matches within one path segment, while `**` can cross directories. Results are sorted by path. It skips `node_modules`, `.git`, and `dist`, does not follow symlinked directories, and processes one config at a time unless `--jobs` is set. A zero-match pattern, invalid config, or failed server connection returns exit code `1`; with `--fail-on error`, warnings alone remain non-blocking. In `--json` mode the no-match guidance is written to stderr so stdout stays valid JSON. Like `check`, fleet validation launches the commands and makes the network requests declared by the configs, so only point it at configs you trust.
 
 ### Exit Codes
 
 - **`0`**: All checks passed cleanly.
-- **`1`**: Diagnostic failure (one or more errors, or warnings if `--fail-on warning` is set).
+- **`1`**: Diagnostic, config, or connection failure; warnings also fail if `--fail-on warning` is set. `check-all` also returns `1` when no files match.
 - **`2`**: Configuration or usage error (missing file, JSON parse error, invalid options).
 
 ---
@@ -303,7 +306,6 @@ The `security.*` checks are heuristic — they pattern-match on what a server *d
 - **Handshake timeout defaults to 5000ms** per server (`--timeout <ms>` to change it). A slow-starting stdio server or a server behind a slow network path can fail with `status: 'timeout'` even though it would eventually respond.
 - **`schema.sample-call-simulation`** builds synthetic payloads from a tool's declared JSON Schema and checks the schema is internally consistent (e.g. catches an empty `enum`, or conflicting `minimum`/`maximum`) — it does **not** actually invoke the tool, and it does not validate business logic, side effects, or whether the tool's real output matches its declared schema.
 - **`security.*` checks are heuristic pattern-matching**, not a security audit — see the note above. They can both miss real issues and flag benign configs (e.g. a legitimate local dev server on plain `http://`).
-- **Fleet commands (`check-all`, `diff`) are newer and less battle-tested** than `check`/`watch` — the core check pipeline they're built on is the same, but edge cases in glob matching or drift diffing are more likely.
 - **The VS Code extension and community check packages are not shipped/published** — see the sections above.
 - **The Reliability quality dimension is currently binary**: 100 if the server connected, 0 if it didn't (plus any future `reliability.*` diagnostics — none exist yet). Signals like latency trends, retry behavior, or flakiness across repeated runs aren't scored yet.
 - **`resources/list`/`prompts/list` pagination (`nextCursor`) is not followed** — mcp-medic inspects only the first page a server returns, matching the existing (also unpaginated) `tools/list` handling. A server with a very large resource/prompt catalog behind pagination will be under-inspected.
