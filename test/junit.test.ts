@@ -68,5 +68,65 @@ describe('JUnit XML Export Formatter', () => {
     const xml = formatFleetReportJUnit(fleetReport);
     expect(xml).toContain('<testsuites name="mcp-medic-fleet"');
     expect(xml).toContain('testsuite name="/path/to/.mcp.json"');
+    expect(xml).toContain('tests="1" failures="0"');
+    expect((xml.match(/<testcase\b/g) ?? [])).toHaveLength(1);
+  });
+
+  it('counts emitted fleet cases and failures, including invalid files and warnings', () => {
+    const fleetReport: FleetReport = {
+      totalFiles: 2,
+      successfulFiles: 1,
+      failedFiles: 1,
+      totalServers: 2,
+      totalErrors: 2,
+      totalWarnings: 1,
+      fileResults: [
+        {
+          filePath: '/path/a\u0001&.json',
+          report: {
+            connections: [
+              { server: { name: 'ok<&', transport: 'stdio' }, status: 'connected' },
+              {
+                server: { name: 'broken', transport: 'http', url: 'https://example.test' },
+                status: 'failed',
+                error: { stage: 'handshake', message: 'bad <handshake> & "retry"' },
+              },
+            ],
+            diagnostics: [
+              { checkId: 'schema.bad<&', severity: 'error', message: 'missing <field> & value', serverName: 'broken' },
+              { checkId: 'schema.warning', severity: 'warning', message: 'warning & safe', serverName: 'ok<&' },
+              { checkId: 'schema.info', severity: 'info', message: 'info <note>', serverName: 'ok<&' },
+            ],
+            summary: { servers: 2, connected: 1, failed: 1, errors: 1, warnings: 1 },
+          },
+        },
+        { filePath: '/path/bad<&\u0001.json', error: 'Config <invalid> & unreadable' },
+      ],
+    };
+
+    const xml = formatFleetReportJUnit(fleetReport);
+    expect(xml).toContain('<testsuites name="mcp-medic-fleet" tests="6" failures="3">');
+    expect(xml).toContain('tests="5" failures="2"');
+    expect(xml).toContain('testsuite name="/path/bad&lt;&amp;.json" tests="1" failures="1"');
+    expect(xml).toContain('[warning] warning &amp; safe');
+    expect(xml).toContain('[info] info &lt;note&gt;');
+    expect(xml).toContain('bad &lt;handshake&gt; &amp; &quot;retry&quot;');
+    expect(xml).not.toContain('\u0001');
+    expect((xml.match(/<testcase\b/g) ?? [])).toHaveLength(6);
+    expect((xml.match(/<failure\b/g) ?? [])).toHaveLength(3);
+  });
+
+  it('reports a zero-case empty fleet accurately', () => {
+    const xml = formatFleetReportJUnit({
+      totalFiles: 0,
+      successfulFiles: 0,
+      failedFiles: 0,
+      totalServers: 0,
+      totalErrors: 0,
+      totalWarnings: 0,
+      fileResults: [],
+    });
+    expect(xml).toContain('<testsuites name="mcp-medic-fleet" tests="0" failures="0">');
+    expect((xml.match(/<testcase\b/g) ?? [])).toHaveLength(0);
   });
 });
