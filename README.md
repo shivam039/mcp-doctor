@@ -33,7 +33,7 @@ This is the whole point (a real handshake, not a schema guess) — but it means 
 - 💡 **Auto-Fix Suggestions**: Diagnose issues with clear, actionable fix suggestions using `--show-fixes`.
 - 🌐 **Registry Validation**: Validate published registry entries directly using `mcp-medic check --registry <server-id>`.
 - **Fleet Validation**: Scan and validate monorepos or multi-team configurations with deterministic `*`/`**` glob matching, bounded parallel checks, and CI-ready failure handling.
-- 🧪 **Drift Detection** (experimental): Catch environment divergence between staging and production configs with `mcp-medic diff <configA> <configB>`.
+- 🔄 **Drift Detection**: Catch environment divergence between staging and production configs with `mcp-medic diff <configA> <configB>`, including transport headers and OAuth refresh configuration with credential values redacted.
 - 📜 **Policy-as-Code**: Enforce organizational constraints (banned transports, domain allowlists, minimum description lengths, a minimum quality score, a max tool count, required tool descriptions) via `.mcp-medic-policy.json` / `--policy`.
 - 📸 **Snapshot Baseline Mode**: Filter out legacy diagnostics with `--snapshot <baseline.json>` to gate only on newly introduced regressions.
 - 📊 **CI Reporting**: Export JUnit XML (`--export-junit`), JSON (`--export-json`, always includes the quality score), and SARIF 2.1.0 (`--export-sarif`, for GitHub Code Scanning).
