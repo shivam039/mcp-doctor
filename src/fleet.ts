@@ -4,7 +4,7 @@ import { loadConfig } from './config-loader.js';
 import { runChecks } from './orchestrator.js';
 import { allChecks } from './checks/index.js';
 import type { MCPConfig, MCPServerConfig, RunReport, RunOptions, DiagnosticResult } from './types.js';
-import { redactRecord } from './redact.js';
+import { isSecretKey, redactDeep, redactRecord } from './redact.js';
 
 export interface FileRunResult {
   filePath: string;
@@ -53,6 +53,72 @@ async function mapWithConcurrency<T, U>(
     }),
   );
   return results;
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map((key) => [key, canonicalize((value as Record<string, unknown>)[key])]),
+    );
+  }
+  return value;
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(canonicalize(value)) ?? 'undefined';
+}
+
+function redactInlineSecrets(value: string): string {
+  return value
+    .replace(/(\bBearer\s+)[^\s,;"']+/gi, '$1[REDACTED]')
+    .replace(
+      /([a-z0-9_.-]*(?:authorization|token|secret|password|passwd|pwd|api[-_]?key|apikey|cookie|credential|bearer)[a-z0-9_.-]*\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      '$1[REDACTED]',
+    );
+}
+
+function redactArgs(args: string[] | undefined): string[] | undefined {
+  if (!args) return args;
+  const result = [...args];
+  for (let i = 0; i < result.length; i += 1) {
+    const arg = result[i]!;
+    const equalsIndex = arg.indexOf('=');
+    if (equalsIndex >= 0 && isSecretKey(arg.slice(0, equalsIndex).replace(/^-+/, ''))) {
+      result[i] = `${arg.slice(0, equalsIndex + 1)}[REDACTED]`;
+    } else if (isSecretKey(arg.replace(/^-+/, '')) && i + 1 < result.length) {
+      result[i + 1] = '[REDACTED]';
+      i += 1;
+    }
+  }
+  return result.map(redactInlineSecrets);
+}
+
+/** Removes URL credentials and secret-looking query/fragment values before a diff is displayed. */
+function redactUrl(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.username) url.username = '[REDACTED]';
+    if (url.password) url.password = '[REDACTED]';
+    for (const key of [...url.searchParams.keys()]) {
+      if (isSecretKey(key)) url.searchParams.set(key, '[REDACTED]');
+    }
+    if (url.hash) url.hash = '[REDACTED]';
+    return url.toString();
+  } catch {
+    // Invalid URL-like values still get a conservative pass over common credential forms.
+    return value
+      .replace(/([a-z][a-z0-9+.-]*:\/\/)[^/@?#]+@/i, '$1[REDACTED]@')
+      .replace(/([?&])([^=&#]+)=([^&#]*)/g, (match, separator: string, rawKey: string) => {
+        let key = rawKey;
+        try { key = decodeURIComponent(rawKey.replace(/\+/g, ' ')); } catch { /* retain raw key */ }
+        return isSecretKey(key) ? `${separator}${rawKey}=[REDACTED]` : match;
+      })
+      .replace(/#.*$/, '#[REDACTED]');
+  }
 }
 
 function findFilesMatching(dir: string, rootDir: string, pattern: RegExp, results: string[] = []): string[] {
@@ -186,19 +252,40 @@ export function diffConfigs(
         changes.push({ field: 'transport', from: serverA.transport, to: serverB.transport });
       }
       if (serverA.command !== serverB.command) {
-        changes.push({ field: 'command', from: serverA.command, to: serverB.command });
+        changes.push({
+          field: 'command',
+          from: serverA.command === undefined ? undefined : redactInlineSecrets(serverA.command),
+          to: serverB.command === undefined ? undefined : redactInlineSecrets(serverB.command),
+        });
       }
-      if (JSON.stringify(serverA.args) !== JSON.stringify(serverB.args)) {
-        changes.push({ field: 'args', from: serverA.args, to: serverB.args });
+      if (stableStringify(serverA.args) !== stableStringify(serverB.args)) {
+        changes.push({ field: 'args', from: redactArgs(serverA.args), to: redactArgs(serverB.args) });
       }
-      if (serverA.url !== serverB.url) {
-        changes.push({ field: 'url', from: serverA.url, to: serverB.url });
+      if (stableStringify(serverA.url) !== stableStringify(serverB.url)) {
+        changes.push({ field: 'url', from: redactUrl(serverA.url), to: redactUrl(serverB.url) });
       }
-      if (JSON.stringify(serverA.env) !== JSON.stringify(serverB.env)) {
+      if (stableStringify(serverA.env) !== stableStringify(serverB.env)) {
         // Report that env changed and which keys, but never raw values —
         // env vars routinely carry API keys/tokens and diff output gets
         // pasted into PRs and CI logs.
         changes.push({ field: 'env', from: redactRecord(serverA.env), to: redactRecord(serverB.env) });
+      }
+      if (stableStringify(serverA.headers) !== stableStringify(serverB.headers)) {
+        changes.push({ field: 'headers', from: redactRecord(serverA.headers), to: redactRecord(serverB.headers) });
+      }
+      if (stableStringify(serverA.tokenRefreshUrl) !== stableStringify(serverB.tokenRefreshUrl)) {
+        changes.push({
+          field: 'tokenRefreshUrl',
+          from: redactUrl(serverA.tokenRefreshUrl),
+          to: redactUrl(serverB.tokenRefreshUrl),
+        });
+      }
+      if (stableStringify(serverA.tokenRefreshBody) !== stableStringify(serverB.tokenRefreshBody)) {
+        changes.push({
+          field: 'tokenRefreshBody',
+          from: redactDeep(serverA.tokenRefreshBody),
+          to: redactDeep(serverB.tokenRefreshBody),
+        });
       }
       if (changes.length > 0) {
         entries.push({ serverName: name, kind: 'modified', changes });

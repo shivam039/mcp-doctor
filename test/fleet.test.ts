@@ -103,6 +103,79 @@ describe('Fleet Management & Drift Detection', () => {
     expect(JSON.stringify(diff)).not.toContain('sk-new-secret');
   });
 
+  it('detects auth and transport drift without leaking credential values', () => {
+    const configA: MCPConfig = {
+      servers: [{
+        name: 'auth-server',
+        transport: 'http',
+        command: 'node --token=old-command-secret',
+        url: 'https://api.example/mcp?token=old-url-secret&key=old-query-key&region=us#access_token=old-fragment',
+        headers: { Authorization: 'Bearer old-header-secret', 'X-Access-Token': 'old-access-secret', Accept: 'application/json' },
+        env: { API_KEY: 'old-env-secret', MODE: 'prod' },
+        args: ['--api-key', 'old-arg-secret'],
+        tokenRefreshUrl: 'https://user:old-password@auth.example/refresh?client_secret=old-query-secret',
+        tokenRefreshBody: {
+          client_secret: 'old-body-secret',
+          grant_type: 'refresh_token',
+          nested: { api_key: 'old-nested-secret', scope: 'read' },
+        },
+      }],
+    };
+    const configB: MCPConfig = {
+      servers: [{
+        name: 'auth-server',
+        transport: 'http',
+        command: 'node --token=new-command-secret',
+        url: 'https://api.example/mcp?token=new-url-secret&key=new-query-key&region=eu#access_token=new-fragment',
+        headers: { Accept: 'application/json', Authorization: 'Bearer new-header-secret', 'X-Access-Token': 'new-access-secret' },
+        env: { MODE: 'prod', API_KEY: 'new-env-secret' },
+        args: ['--api-key', 'new-arg-secret'],
+        tokenRefreshUrl: 'https://user:new-password@auth.example/refresh?client_secret=new-query-secret',
+        tokenRefreshBody: {
+          nested: { scope: 'write', api_key: 'new-nested-secret' },
+          grant_type: 'refresh_token',
+          client_secret: 'new-body-secret',
+        },
+      }],
+    };
+
+    const diff = diffConfigs(configA, configB);
+    const fields = diff.entries[0]?.changes?.map((change) => change.field);
+    expect(fields).toEqual(expect.arrayContaining(['command', 'url', 'headers', 'args', 'tokenRefreshUrl', 'tokenRefreshBody']));
+    expect(fields).toContain('env');
+    const serialized = JSON.stringify(diff);
+    for (const secret of [
+      'old-url-secret', 'new-url-secret', 'old-fragment', 'new-fragment',
+      'old-query-key', 'new-query-key', 'old-access-secret', 'new-access-secret',
+      'old-header-secret', 'new-header-secret', 'old-env-secret', 'new-env-secret',
+      'old-arg-secret', 'new-arg-secret', 'old-password', 'new-password',
+      'old-command-secret', 'new-command-secret',
+      'old-query-secret', 'new-query-secret', 'old-body-secret', 'new-body-secret',
+      'old-nested-secret', 'new-nested-secret',
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).toContain('[REDACTED]');
+
+    const insertionOrderA: MCPConfig = {
+      servers: [{
+        name: 'order-only',
+        transport: 'http',
+        env: { API_KEY: 'same-secret', MODE: 'prod' },
+        tokenRefreshBody: { nested: { first: 1, second: 2 }, grant_type: 'refresh_token' },
+      }],
+    };
+    const insertionOrderB: MCPConfig = {
+      servers: [{
+        name: 'order-only',
+        transport: 'http',
+        env: { MODE: 'prod', API_KEY: 'same-secret' },
+        tokenRefreshBody: { grant_type: 'refresh_token', nested: { second: 2, first: 1 } },
+      }],
+    };
+    expect(diffConfigs(insertionOrderA, insertionOrderB).identical).toBe(true);
+  });
+
   it('runs fleet checks across multiple config files in a directory', async () => {
     const config1 = join(testFleetDir, 'team-a.mcp.json');
     const config2 = join(testFleetDir, 'team-b.mcp.json');
