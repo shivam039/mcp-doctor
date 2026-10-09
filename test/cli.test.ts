@@ -18,6 +18,8 @@ describe('CLI argument parsing and execution', () => {
       'warning',
       '--timeout',
       '3000',
+      '--jobs',
+      '4',
     ]);
 
     expect(args.command).toBe('check');
@@ -27,6 +29,14 @@ describe('CLI argument parsing and execution', () => {
     expect(args.verbose).toBe(true);
     expect(args.failOn).toBe('warning');
     expect(args.timeoutMs).toBe(3000);
+    expect(args.jobs).toBe(4);
+  });
+
+  it('rejects invalid --jobs values', () => {
+    for (const value of ['0', '-2', '1.5', '9007199254740992', 'many']) {
+      expect(() => parseArgs(['check-all', '**/*.json', '--jobs', value])).toThrow('--jobs requires a positive safe integer');
+    }
+    expect(() => parseArgs(['check-all', '**/*.json', '--jobs'])).toThrow('--jobs requires a positive safe integer');
   });
 
   it('handles help command', async () => {

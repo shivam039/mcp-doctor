@@ -4,6 +4,7 @@ import { writeFileSync, mkdirSync, rmSync, existsSync, symlinkSync } from 'node:
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { MCPConfig, RunReport } from '../src/types.js';
+import { registerConnectImpl } from '../src/orchestrator.js';
 
 describe('Fleet Management & Drift Detection', () => {
   const testFleetDir = join(tmpdir(), `fleet-test-${Date.now()}`);
@@ -127,6 +128,53 @@ describe('Fleet Management & Drift Detection', () => {
     expect(fleetReport.totalFiles).toBe(2);
     expect(fleetReport.successfulFiles).toBe(2);
     expect(fleetReport.totalServers).toBe(2);
+  });
+
+  it('bounds concurrent file checks and retains sorted result order', async () => {
+    for (const name of ['d', 'b', 'c', 'a']) {
+      writeFileSync(
+        join(testFleetDir, `${name}.json`),
+        JSON.stringify({ mcpServers: { [`server-${name}`]: { command: 'node' } } }),
+      );
+    }
+    writeFileSync(join(testFleetDir, 'bad.json'), '{not json');
+
+    registerConnectImpl(async (server) => {
+      if (server.name === 'server-c') throw new Error('synthetic connector rejection');
+      return { server, status: 'connected' };
+    });
+    let activeChecks = 0;
+    let peakChecks = 0;
+    const checks = [{
+      id: 'test.delay',
+      description: 'Test that file-level concurrency is bounded.',
+      async run(connection: { server: { name: string } }) {
+        activeChecks += 1;
+        peakChecks = Math.max(peakChecks, activeChecks);
+        const delayMs = connection.server.name === 'server-a' ? 20 : 1;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        activeChecks -= 1;
+        return [];
+      },
+    }];
+
+    try {
+      const report = await runFleetChecks('*.json', { cwd: testFleetDir, jobs: 2, checks });
+      expect(peakChecks).toBe(2);
+      expect(report.fileResults.map((result) => result.filePath.split(/[\\/]/).pop())).toEqual([
+        'a.json', 'b.json', 'bad.json', 'c.json', 'd.json',
+      ]);
+      expect(report.successfulFiles).toBe(3);
+      expect(report.failedFiles).toBe(2);
+      expect(report.totalErrors).toBe(2);
+      expect(report.fileResults.at(-1)?.report?.summary.servers).toBe(1);
+    } finally {
+      registerConnectImpl(async (server) => ({
+        server,
+        status: 'failed',
+        error: { stage: 'spawn', message: 'test connector reset' },
+      }));
+    }
   });
 
   it('filters out existing baseline diagnostics to report regressions only', () => {

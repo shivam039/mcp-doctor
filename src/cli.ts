@@ -33,6 +33,7 @@ export interface ParsedArgs {
   updateSnapshotPath?: string;
   json: boolean;
   timeoutMs?: number;
+  jobs?: number;
   showFixes: boolean;
   verbose: boolean;
   failOn: 'error' | 'warning';
@@ -127,6 +128,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
         );
       }
       args.protocolVersion = val;
+    } else if (arg === '--jobs') {
+      const value = argv[++i];
+      const parsed = value ? Number(value) : NaN;
+      if (!Number.isSafeInteger(parsed) || parsed < 1) {
+        throw new Error(`--jobs requires a positive safe integer, got: ${value ?? '(none)'}`);
+      }
+      args.jobs = parsed;
     } else {
       positional.push(arg);
     }
@@ -228,6 +236,7 @@ OPTIONS
   --timeout <ms>        Per-server handshake timeout in milliseconds (default: 5000)
   --protocol-version <v> MCP protocolVersion to request: "auto" (default, latest supported)
                         or an explicit version, e.g. ${SUPPORTED_PROTOCOL_VERSIONS[SUPPORTED_PROTOCOL_VERSIONS.length - 1]}
+  --jobs <n>            Maximum config files processed at once in check-all (default: 1)
   --help, -h            Show help
   --version, -V         Print the installed mcp-medic version
 
@@ -626,6 +635,7 @@ export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps
     const fleetReport = await runFleetChecks(glob, {
       checks,
       timeoutMs: args.timeoutMs,
+      jobs: args.jobs,
       verbose: args.verbose,
       protocolVersion: args.protocolVersion,
     });
