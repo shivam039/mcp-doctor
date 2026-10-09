@@ -15,7 +15,7 @@ const REDACTED = '[REDACTED]';
  * broad — false positives (redacting a harmless key) are safe; false
  * negatives (leaking a secret) are not. */
 const SECRET_KEY_PATTERN =
-  /(authorization|auth|token|secret|password|passwd|pwd|api[-_]?key|apikey|cookie|credential|bearer|session|private[-_]?key|client[-_]?secret)/i;
+  /(authorization|auth|token|secret|password|passwd|pwd|api[-_]?key|apikey|access[-_]?key|access[-_]?token|(?:^|[-_])key(?:$|[-_])|cookie|credential|bearer|session|private[-_]?key|client[-_]?secret)/i;
 
 export function isSecretKey(key: string): boolean {
   return SECRET_KEY_PATTERN.test(key);
