@@ -35,6 +35,26 @@ export interface ConfigDiffResult {
   entries: ConfigDiffEntry[];
 }
 
+async function mapWithConcurrency<T, U>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<U>,
+): Promise<U[]> {
+  const results = new Array<U>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= items.length) return;
+        results[index] = await worker(items[index]!);
+      }
+    }),
+  );
+  return results;
+}
+
 function findFilesMatching(dir: string, rootDir: string, pattern: RegExp, results: string[] = []): string[] {
   if (!existsSync(dir)) return results;
   let entries: string[];
@@ -95,46 +115,43 @@ export function findConfigFiles(globOrPattern: string, rootDir: string = process
  */
 export async function runFleetChecks(
   globPattern: string,
-  options: RunOptions & { cwd?: string } = {},
+  options: RunOptions & { cwd?: string; jobs?: number } = {},
 ): Promise<FleetReport> {
   const root = options.cwd ?? process.cwd();
   const filePaths = findConfigFiles(globPattern, root);
-  const fileResults: FileRunResult[] = [];
+  const jobs = options.jobs ?? 1;
+  if (!Number.isSafeInteger(jobs) || jobs < 1) {
+    throw new TypeError(`jobs must be a positive safe integer, got: ${jobs}`);
+  }
 
-  let totalServers = 0;
-  let totalErrors = 0;
-  let totalWarnings = 0;
-
-  for (const filePath of filePaths) {
+  const processed = await mapWithConcurrency(filePaths, jobs, async (filePath) => {
     try {
       const rawText = readFileSync(filePath, 'utf-8');
       const rawJson = JSON.parse(rawText);
       const { config, errors } = loadConfig(rawJson, filePath);
 
       if (errors.length > 0 || !config) {
-        fileResults.push({
-          filePath,
-          error: `Config validation failed: ${errors.join(', ')}`,
-        });
-        totalErrors += errors.length;
-        continue;
+        return {
+          fileResult: { filePath, error: `Config validation failed: ${errors.join(', ')}` },
+          errorCount: errors.length,
+        };
       }
 
       const checks = options.checks ?? allChecks;
       const report = await runChecks(config, { ...options, checks });
-
-      fileResults.push({ filePath, report });
-      totalServers += report.summary.servers;
-      totalErrors += report.summary.errors;
-      totalWarnings += report.summary.warnings;
+      return { fileResult: { filePath, report }, errorCount: report.summary.errors };
     } catch (err) {
-      fileResults.push({
-        filePath,
-        error: `Could not process file: ${err instanceof Error ? err.message : String(err)}`,
-      });
-      totalErrors += 1;
+      return {
+        fileResult: { filePath, error: `Could not process file: ${err instanceof Error ? err.message : String(err)}` },
+        errorCount: 1,
+      };
     }
-  }
+  });
+  const fileResults = processed.map((item) => item.fileResult);
+
+  const totalServers = fileResults.reduce((sum, result) => sum + (result.report?.summary.servers ?? 0), 0);
+  const totalErrors = processed.reduce((sum, item) => sum + item.errorCount, 0);
+  const totalWarnings = fileResults.reduce((sum, result) => sum + (result.report?.summary.warnings ?? 0), 0);
 
   return {
     totalFiles: filePaths.length,
