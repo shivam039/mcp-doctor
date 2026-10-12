@@ -6,7 +6,12 @@ All notable changes to `mcp-medic` are documented here. Format loosely follows [
 
 - **Fleet validation reliability**: deterministic, bounded `*`/`**` config discovery; configurable `check-all --jobs`; complete drift comparison with credential redaction; JUnit counts matching emitted test cases; and actionable nonzero results for empty matches, invalid configs, and failed server connections. See the [1.2.9 release PRD](./docs/RELEASE_PRD_1.2.9.md).
 
+## [1.2.10] — 2026-10-12
+
+- **VS Code extension build validation**: added `npm run check:vscode-extension` to build the core package, install extension dependencies from its lockfile, and compile the extension; CI runs the command and setup docs use `npm ci`.
+
 ## [Unreleased]
+
 - **MCP Quality Engine v1.1 (trust & coverage hardening)**: the quality score is now protocol-version aware, fully derived from visible diagnostics (no hidden deductions), and honest about what it actually inspected.
   - New `src/protocol/quality-rules.ts` (`getProtocolQualityRules`) distinguishes a real protocol violation (hard constraint defined by the negotiated MCP version) from a quality recommendation. No currently-supported version defines a tool-name length/pattern constraint, so behavior is unchanged today — this is forward-compatible plumbing for when one does.
   - Connection-level facts that used to be deducted from the score with no visible diagnostic (a version downgrade, a missing `serverInfo`, a capability-list failure) are now real diagnostics from a new `protocol.connection-health` check (`protocol.version-downgrade`, `protocol.missing-server-info`, `protocol.capability-error`) — every point deducted is now traceable to something in `report.diagnostics`.

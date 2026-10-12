@@ -1,12 +1,12 @@
 # Release PRD: mcp-medic 1.2.10 — VS Code Extension Build Validation
 
-**Status:** Proposed  
-**Target:** 1.2.10  
+**Status:** Complete — ready for 1.2.10 release
+**Target:** 1.2.10
 **Owner:** mcp-medic maintainers
 
 ## Summary
 
-Make the experimental VS Code extension's build reproducible and continuously validated alongside the core package. This release adds a root command for compiling the extension, runs it in CI after the core library build, and documents clean dependency installation steps.
+Make the experimental VS Code extension's build reproducible and continuously validated alongside the core package. This release adds a root command that builds the core package, installs the extension's locked development dependencies, and compiles it; CI runs that command, and local setup docs use clean dependency installation steps.
 
 ## Problem
 
@@ -14,8 +14,8 @@ The extension has a committed lockfile and compile script, but the CI workflow n
 
 ## Goals
 
-1. Provide a single root command to install the extension's locked development dependencies and compile it.
-2. Compile the extension in CI after building the parent package it imports for types.
+1. Provide a single root command that builds the parent package, installs the extension's locked development dependencies, and compiles the extension.
+2. Run the root command in CI so the extension compiles against the freshly built parent package.
 3. Document reproducible `npm ci` setup for local extension development.
 
 ## Non-goals
@@ -26,8 +26,8 @@ The extension has a committed lockfile and compile script, but the CI workflow n
 
 ## Acceptance criteria
 
-- `npm run check:vscode-extension` installs from `vscode-extension/package-lock.json` and compiles the extension.
-- CI runs the extension compile after the root package build.
+- `npm run check:vscode-extension` builds the root package, installs from `vscode-extension/package-lock.json`, and compiles the extension from a clean checkout.
+- CI runs `npm run check:vscode-extension` as the build and compile guard.
 - Local setup documentation uses the lockfile-based install flow.
 - Existing core tests, typecheck, build, and extension compile pass.
 

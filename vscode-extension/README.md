@@ -9,15 +9,15 @@ It wires `src/extension/index.ts` from the parent `mcp-medic` package (schema + 
 From the **repo root** (not this folder):
 
 ```bash
-npm install
-npm run build       # produces dist/, which this extension loads at runtime
+npm ci
+npm run check:vscode-extension  # builds mcp-medic and compiles the extension
 ```
 
 Then, in this folder:
 
 ```bash
 cd vscode-extension
-npm install
+npm ci
 npm run compile
 ```
 
@@ -27,7 +27,7 @@ Open the **`vscode-extension/`** folder itself in VS Code (not the repo root), t
 
 ```bash
 cd vscode-extension
-npm install
+npm ci
 npm run compile
 npm run package        # produces mcp-medic-vscode-0.0.1.vsix
 code --install-extension mcp-medic-vscode-0.0.1.vsix
