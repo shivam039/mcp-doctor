@@ -30,7 +30,7 @@ jobs:
           cache: 'npm'
       - run: npm ci
       - run: npm run typecheck
-      - run: npm run build
+      - run: npm run check:vscode-extension
 
   test:
     name: Test Node ${{ matrix.node-version }} on ${{ matrix.os }}
