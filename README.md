@@ -101,6 +101,9 @@ npx mcp-medic
 # Run check on a specific configuration file
 npx mcp-medic check path/to/config.json
 
+# Run selected checks only (quality coverage is shown automatically)
+npx mcp-medic check path/to/config.json --only-checks schema.missing-description,quality.prompt
+
 # Validate all configs across a monorepo
 npx mcp-medic check-all "configs/**/*.json"
 
@@ -145,6 +148,7 @@ npx mcp-medic watch path/to/config.json
 | `--export-json <file>` | Export report in JSON format (always includes `quality`) |
 | `--export-sarif <file>` | Export report in SARIF 2.1.0 format (GitHub Code Scanning, etc.) |
 | `--score` | Include the MCP quality score section in the human report |
+| `--only-checks <id,...>` | Run selected check IDs for `check`, `score`, or `watch`; also displays quality coverage |
 | `--protocol-version <v>` | MCP protocolVersion to request: `auto` (default) or an explicit version |
 | `--show-fixes` | Show suggested fixes inline under diagnostics |
 | `--fail-on <severity>` | Fail with exit code 1 on `error` (default) or `warning` |
@@ -308,9 +312,7 @@ The `security.*` checks are heuristic — they pattern-match on what a server *d
 - **`security.*` checks are heuristic pattern-matching**, not a security audit — see the note above. They can both miss real issues and flag benign configs (e.g. a legitimate local dev server on plain `http://`).
 - **The VS Code extension and community check packages are not shipped/published** — see the sections above.
 - **The Reliability quality dimension is currently binary**: 100 if the server connected, 0 if it didn't (plus any future `reliability.*` diagnostics — none exist yet). Signals like latency trends, retry behavior, or flakiness across repeated runs aren't scored yet.
-- **`resources/list`/`prompts/list` pagination (`nextCursor`) is not followed** — mcp-medic inspects only the first page a server returns, matching the existing (also unpaginated) `tools/list` handling. A server with a very large resource/prompt catalog behind pagination will be under-inspected.
 - **The quality score never calls `resources/read`, `prompts/get`, or any tool** — it's entirely derived from the passive `initialize`/`tools/list`/`resources/list`/`prompts/list` responses already gathered during a normal `check`. See [SECURITY.md](./SECURITY.md) for the full passive-only guarantee.
-- **The CLI cannot currently restrict the check set** (no `--only-checks` flag), so `coverage` is always 100% via `check`/`score`. Partial coverage (and the coverage-aware `minimumScore` warning) only happens when the library API's `runChecks({ checks: [...] })` is called with a restricted list.
 - **No currently-supported MCP protocol version defines a hard tool-name length or character-pattern constraint**, so `src/protocol/quality-rules.ts`'s protocol-vs-quality distinction for tool names is real but currently dormant — every finding today is a quality recommendation, never a protocol violation, because no version actually requires one. The abstraction is there for when a future version does.
 - **npm README sync**: Latest docs live on GitHub main; npm README updates on the next publish.
 - **First run via `npx`** pays a one-time cost to resolve and download the package; once installed (or on a warm npx cache), `--help`/`--version` return in well under 100ms.

@@ -43,6 +43,8 @@ export interface ParsedArgs {
   showScore: boolean;
   /** "auto" (default) or an explicit MCP protocolVersion string, e.g. "2025-06-18". */
   protocolVersion: string;
+  /** IDs selected by `--only-checks` (applies to check, score, and watch). */
+  onlyCheckIds?: string[];
 }
 
 /** Prompts the user with `question` and resolves true for an explicit "y"/"yes" answer. */
@@ -73,6 +75,22 @@ export function parseArgs(argv: string[]): ParsedArgs {
       args.dryRun = true;
     } else if (arg === '--score') {
       args.showScore = true;
+    } else if (arg === '--only-checks') {
+      const value = argv[++i];
+      if (!value || value.startsWith('-')) {
+        throw new Error('--only-checks requires a comma-separated list of check IDs');
+      }
+      if (args.onlyCheckIds) {
+        throw new Error('--only-checks may only be specified once');
+      }
+      const ids = value.split(',').map((id) => id.trim());
+      if (ids.some((id) => id.length === 0)) {
+        throw new Error('--only-checks does not allow empty IDs; provide comma-separated check IDs');
+      }
+      if (new Set(ids).size !== ids.length) {
+        throw new Error('--only-checks does not allow duplicate check IDs');
+      }
+      args.onlyCheckIds = ids;
     } else if (arg === '--help' || arg === '-h') {
       args.command = 'help';
     } else if (arg === '--version' || arg === '-V') {
@@ -229,6 +247,7 @@ OPTIONS
   --export-json <file>  Export report in JSON format
   --export-sarif <file> Export report in SARIF 2.1.0 format (GitHub Code Scanning, etc.)
   --score               Include the MCP quality score in the report (implied by the "score" command)
+  --only-checks <ids>   Run only comma-separated check IDs (check, score, watch)
   --show-fixes          Print actionable suggested fixes under diagnostics
   --fail-on <severity>  Exit with code 1 on 'error' (default) or 'warning'
   --verbose, -v         Print raw JSON-RPC traffic and debug messages
@@ -292,7 +311,24 @@ async function executeCheck(
   config: MCPConfig,
   args: ParsedArgs,
 ): Promise<number> {
-  const [checks] = await Promise.all([loadChecks(args.policyPath), loadProtocol()]);
+  const [availableChecks] = await Promise.all([loadChecks(args.policyPath), loadProtocol()]);
+  let checks = availableChecks;
+  if (args.onlyCheckIds) {
+    const availableIds = new Set(availableChecks.map((check) => check.id));
+    const unknownIds = args.onlyCheckIds.filter((id) => !availableIds.has(id));
+    if (unknownIds.length > 0) {
+      console.error(
+        pc.red(
+          `mcp-medic usage error: unknown check ID(s): ${unknownIds.join(', ')}. ` +
+            `Available IDs: ${[...availableIds].join(', ')}.` +
+            `${args.policyPath ? ' Verify policy check IDs are enabled by the selected policy.' : ''}`,
+        ),
+      );
+      return 2;
+    }
+    // Keep the registry's canonical order regardless of the order in the CLI list.
+    checks = availableChecks.filter((check) => args.onlyCheckIds!.includes(check.id));
+  }
 
   let report = await runChecks(config, {
     timeoutMs: args.timeoutMs,
@@ -372,7 +408,12 @@ async function executeCheck(
     console.log(formatReportJSON(report));
   } else {
     console.log(
-      colorizeHumanReport(formatReportHuman(report, { showFixes: args.showFixes, showScore: args.showScore })),
+      colorizeHumanReport(
+        formatReportHuman(report, {
+          showFixes: args.showFixes,
+          showScore: args.showScore || Boolean(args.onlyCheckIds),
+        }),
+      ),
     );
   }
 
@@ -581,6 +622,11 @@ export async function main(argv: string[] = process.argv.slice(2), deps: CliDeps
   if (args.command === 'version') {
     console.log(getPackageVersion());
     return 0;
+  }
+
+  if (args.onlyCheckIds && !['check', 'score', 'watch'].includes(args.command)) {
+    console.error(pc.red('--only-checks is supported only by the check, score, and watch commands.'));
+    return 2;
   }
 
   if (args.command === 'fix' && args.registryServer) {

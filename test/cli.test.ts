@@ -39,6 +39,21 @@ describe('CLI argument parsing and execution', () => {
     expect(() => parseArgs(['check-all', '**/*.json', '--jobs'])).toThrow('--jobs requires a positive safe integer');
   });
 
+  it('parses a trimmed comma-separated --only-checks list', () => {
+    expect(parseArgs(['check', 'x.json', '--only-checks', ' schema.missing-description,quality.prompt ']).onlyCheckIds)
+      .toEqual(['schema.missing-description', 'quality.prompt']);
+  });
+
+  it('rejects missing, empty, duplicate, or repeated --only-checks lists', () => {
+    for (const value of ['', ',check.one', 'check.one,', 'check.one,,check.two', 'check.one,check.one']) {
+      expect(() => parseArgs(['check', 'x.json', '--only-checks', value])).toThrow('--only-checks');
+    }
+    expect(() => parseArgs(['check', 'x.json', '--only-checks'])).toThrow('--only-checks requires');
+    expect(() => parseArgs(['check', 'x.json', '--only-checks', '--json'])).toThrow('--only-checks requires');
+    expect(() => parseArgs(['check', 'x.json', '--only-checks', 'check.one', '--only-checks', 'check.two']))
+      .toThrow('--only-checks may only be specified once');
+  });
+
   it('handles help command', async () => {
     const code = await main(['--help']);
     expect(code).toBe(0);
@@ -204,6 +219,95 @@ describe('CLI argument parsing and execution', () => {
     expect(args.command).toBe('score');
     expect(args.configPath).toBe('x.json');
     expect(args.showScore).toBe(true);
+  });
+
+  it('runs only selected checks and reports partial quality coverage', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mcp-medic-only-checks-'));
+    const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.js', import.meta.url));
+    const configPath = join(root, 'mcp.json');
+    writeFileSync(configPath, JSON.stringify({
+      servers: [{ name: 'fake', transport: 'stdio', command: process.execPath, args: [fixture, 'missing-description'] }],
+    }));
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message: string) => logs.push(message);
+    try {
+      const defaultCode = await main(['check', configPath, '--json']);
+      const defaultReport = JSON.parse(logs.at(-1)!);
+      expect(defaultCode).toBe(0);
+      expect(defaultReport.quality.coveragePercent).toBe(100);
+
+      logs.length = 0;
+      const code = await main(['check', configPath, '--only-checks', 'schema.missing-description', '--json']);
+      const report = JSON.parse(logs.at(-1)!);
+      expect(code).toBe(0);
+      expect(report.diagnostics.map((diagnostic: { checkId: string }) => diagnostic.checkId))
+        .toEqual(['schema.missing-description']);
+      expect(report.quality.coverage.schema).toBe('partial');
+      expect(report.quality.coverage.security).toBe('not-covered');
+      expect(report.quality.coveragePercent).toBeLessThan(100);
+
+      logs.length = 0;
+      expect(await main(['check', configPath, '--only-checks', 'schema.missing-description'])).toBe(0);
+      expect(logs.join('\n')).toContain('Coverage:');
+    } finally {
+      console.log = originalLog;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('selects policy checks and keeps the partial-coverage score warning', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mcp-medic-policy-only-check-'));
+    const fixture = fileURLToPath(new URL('./fixtures/fake-mcp-server.js', import.meta.url));
+    const configPath = join(root, 'mcp.json');
+    const policyPath = join(root, 'policy.json');
+    writeFileSync(configPath, JSON.stringify({
+      servers: [{ name: 'fake', transport: 'stdio', command: process.execPath, args: [fixture, 'missing-description'] }],
+    }));
+    writeFileSync(policyPath, JSON.stringify({ minDescriptionLength: 100, quality: { minimumScore: 0 } }));
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (message: string) => logs.push(message);
+    try {
+      const code = await main([
+        'score', configPath, '--policy', policyPath,
+        '--only-checks', 'policy.description-length,schema.missing-description', '--json',
+      ]);
+      const report = JSON.parse(logs.at(-1)!);
+      expect(code).toBe(0);
+      const checkIds = report.diagnostics.map((diagnostic: { checkId: string }) => diagnostic.checkId);
+      expect(checkIds.slice(0, 2)).toEqual(['schema.missing-description', 'policy.description-length']);
+      expect(checkIds).toContain('policy.partial-coverage-with-minimum-score');
+      expect(report.quality.coveragePercent).toBeLessThan(100);
+    } finally {
+      console.log = originalLog;
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unknown IDs before connecting and rejects unsupported commands', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'mcp-medic-invalid-only-check-'));
+    const configPath = join(root, 'mcp.json');
+    writeFileSync(configPath, JSON.stringify({
+      servers: [{ name: 'unreachable', transport: 'stdio', command: '/path/that/does/not/exist' }],
+    }));
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (message: string) => logs.push(message);
+    console.error = (message: string) => errors.push(message);
+    try {
+      expect(await main(['check', configPath, '--only-checks', 'not.a.real.check'])).toBe(2);
+      expect(logs).toEqual([]);
+      expect(errors.join('\n')).toContain('unknown check ID');
+      expect(await main(['check-all', 'missing/*.json', '--only-checks', 'quality.prompt'])).toBe(2);
+      expect(errors.join('\n')).toContain('supported only by the check, score, and watch commands');
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('parses --score as a flag on the check command', () => {

@@ -10,6 +10,11 @@ All notable changes to `mcp-medic` are documented here. Format loosely follows [
 
 - **VS Code extension build validation**: added `npm run check:vscode-extension` to build the core package, install extension dependencies from its lockfile, and compile the extension; CI runs the command and setup docs use `npm ci`.
 
+## [1.3.0] — 2026-10-16
+
+- **Selective CLI checks**: added `--only-checks <id,...>` for `check`, `score`, and `watch`. Selection validates active IDs before connecting, preserves the all-check default, and displays honest quality coverage for restricted runs.
+- **Documentation correction**: removed the obsolete limitation claiming paginated list results were ignored; the client follows `nextCursor` for tools, resources, resource templates, and prompts.
+
 ## [Unreleased]
 
 - **MCP Quality Engine v1.1 (trust & coverage hardening)**: the quality score is now protocol-version aware, fully derived from visible diagnostics (no hidden deductions), and honest about what it actually inspected.
