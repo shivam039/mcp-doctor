@@ -1,6 +1,6 @@
 # Release PRD: mcp-medic 1.3.0 — Selective CLI Checks
 
-**Status:** Proposed
+**Status:** Complete — implemented for 1.3.0
 **Target:** 1.3.0
 **Owner:** mcp-medic maintainers
 
@@ -19,6 +19,7 @@ The library accepts a restricted check set, and the quality score reports covera
 3. Reject missing, empty, duplicate, unknown, or unsupported-command selections as usage errors (exit code 2) before any server connection is attempted.
 4. Preserve default behavior when the flag is omitted.
 5. When a subset is selected, include the quality score and its coverage in human output; keep JSON coverage accurate and let `quality.minimumScore` continue warning on partial assessment.
+6. Remove the README's stale claim that paginated MCP list results are ignored; the current protocol client follows list cursors.
 
 ## Non-goals
 
@@ -33,6 +34,7 @@ The library accepts a restricted check set, and the quality score reports covera
 - Unknown IDs are rejected before a server process or network connection is started.
 - `check`, `score`, and `watch` run only selected checks; default runs still use the complete active check set.
 - Restricted runs show accurate `quality.coverage` in JSON and human output; an active minimum-score policy still reports its partial-coverage warning.
+- README no longer claims pagination is unsupported for list results.
 
 ## Adversarial review
 
